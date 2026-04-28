@@ -1,32 +1,36 @@
 FROM php:8.2-cli
 
-# Install system dependencies required by Laravel and MySQL.
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
-    default-mysql-client \
-    git \
-    libzip-dev \
-    unzip \
-    && docker-php-ext-install pdo pdo_mysql zip \
-    && rm -rf /var/lib/apt/lists/*
+    unzip curl git libzip-dev default-mysql-client \
+    && docker-php-ext-install zip pdo pdo_mysql
 
-# Install Composer.
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Set working directory
 WORKDIR /app
 
-# Copy the application and install PHP dependencies.
+# Copy project files
 COPY . .
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-# Copy the container startup script.
-COPY docker/start.sh /usr/local/bin/start-container
+# Install Laravel dependencies
+RUN composer install --no-dev --optimize-autoloader
 
-# Ensure Laravel can write runtime files.
-RUN mkdir -p storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache \
-    && chmod +x /usr/local/bin/start-container
+# IMPORTANT: Do NOT create .env here.
+# Render will provide environment variables (including APP_KEY)
 
+# Clear cached config so Laravel reads Render env variables
+RUN php artisan config:clear || true
+RUN php artisan cache:clear || true
+
+# Ensure required folders exist and permissions are correct
+RUN mkdir -p storage bootstrap/cache
+RUN chmod -R 775 storage bootstrap/cache
+
+# Expose Render port
 EXPOSE 10000
 
-CMD ["start-container"]
+# Start Laravel app
+CMD php artisan migrate --force || true && \
+    php artisan serve --host=0.0.0.0 --port=10000
