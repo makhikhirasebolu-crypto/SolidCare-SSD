@@ -39,7 +39,7 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('login.submit') }}">
+                <form method="POST" action="{{ url('/login') }}">
                     @csrf
 
                     <div class="field">
