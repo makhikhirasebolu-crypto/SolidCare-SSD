@@ -1,48 +1,32 @@
 FROM php:8.2-cli
 
-# Install system dependencies
+# Install system dependencies required by Laravel and MySQL.
 RUN apt-get update && apt-get install -y \
-    unzip curl git libzip-dev default-mysql-client \
-    && docker-php-ext-install zip pdo pdo_mysql
+    curl \
+    default-mysql-client \
+    git \
+    libzip-dev \
+    unzip \
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Install Composer.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /app
 
-# Copy project files
+# Copy the application and install PHP dependencies.
 COPY . .
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-# Install Laravel dependencies
-RUN composer install --no-dev --optimize-autoloader
+# Copy the container startup script.
+COPY docker/start.sh /usr/local/bin/start-container
 
-# Create .env file from example
-RUN cp .env.example .env
+# Ensure Laravel can write runtime files.
+RUN mkdir -p storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache \
+    && chmod +x /usr/local/bin/start-container
 
-# Generate application key (won’t crash if already exists)
-RUN cp .env.example .env
-RUN php artisan config:clear || true
-
-# Clear caches to avoid config issues
-RUN php artisan config:clear || true
-RUN php artisan cache:clear || true
-
-# Ensure required folders exist and set permissions
-RUN mkdir -p storage bootstrap/cache
-RUN chmod -R 775 storage bootstrap/cache
-
-# Run migrations safely (won’t crash if DB not ready)
-RUN php artisan migrate --force || true
-
-# Cache config for performance
-RUN php artisan config:cache
-
-# Expose Render port
 EXPOSE 10000
 
-# Start Laravel app
-
-CMD php artisan key:generate --force && \
-    php artisan migrate --force || true && \
-    php artisan serve --host=0.0.0.0 --port=10000
+CMD ["start-container"]
