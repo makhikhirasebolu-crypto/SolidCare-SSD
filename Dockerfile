@@ -21,7 +21,8 @@ RUN composer install --no-dev --optimize-autoloader
 RUN cp .env.example .env
 
 # Generate application key (won’t crash if already exists)
-RUN php artisan key:generate || true
+RUN cp .env.example .env
+RUN php artisan config:clear || true
 
 # Clear caches to avoid config issues
 RUN php artisan config:clear || true
@@ -41,4 +42,7 @@ RUN php artisan config:cache
 EXPOSE 10000
 
 # Start Laravel app
-CMD php artisan serve --host=0.0.0.0 --port=10000
+
+CMD php artisan key:generate --force && \
+    php artisan migrate --force || true && \
+    php artisan serve --host=0.0.0.0 --port=10000
