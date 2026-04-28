@@ -1,0 +1,2751 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Counselling\Models\EmergencyCounsellingModel;
+use App\Counselling\Support\DatasetEmergencyCounsellingResponder;
+use App\Mail\AccommodationStatusUpdated;
+use App\Mail\CheckoutApproved;
+use App\Mail\CheckoutRejected;
+use App\Mail\CheckoutRequestSubmitted;
+use App\Models\AccommodationApplication;
+use App\Models\AccommodationRoom;
+use App\Models\Admin;
+use App\Models\ClinicStockComment;
+use App\Models\ClinicStockItem;
+use App\Models\ClinicStockReceipt;
+use App\Models\ClinicStockUsage;
+use App\Models\CounsellingBooking;
+use App\Models\ReferralComment;
+use App\Models\Student;
+use App\Models\StudentReferral;
+use App\Models\User;
+use App\Models\YearLeader;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Carbon\Carbon;
+
+class AuthController extends Controller
+{
+    public function showLogin()
+    {
+        if (Auth::check() || Auth::guard('admin')->check()) {
+            return redirect()->route('home');
+        }
+
+        return view('auth.login');
+    }
+
+    public function login(Request $request)
+    {
+        $request->merge([
+            'email' => $this->normalizeLoginIdentifier($request->input('email')),
+        ]);
+
+        $credentials = $request->validate([
+            'email' => ['required', 'string', 'max:255'],
+            'password' => ['required'],
+        ]);
+
+        $webCredentials = $this->credentialsForWebLogin($credentials['email'], $credentials['password']);
+        $suggestedEmail = $this->isEmailIdentifier($credentials['email'])
+            ? $this->suggestEmailCorrection($credentials['email'])
+            : null;
+
+        if ($this->attemptGuardLogin('web', $webCredentials)) {
+            $request->session()->regenerate();
+
+            $user = Auth::guard('web')->user();
+            return $this->redirectWebUserAfterLogin($user);
+        }
+
+        if ($suggestedEmail && $this->attemptGuardLogin('web', [
+            'email' => $suggestedEmail,
+            'password' => $credentials['password'],
+        ])) {
+            $request->session()->regenerate();
+
+            $user = Auth::guard('web')->user();
+
+            return $this->redirectWebUserAfterLogin($user)
+                ->with('status', 'Signed in using the corrected email address.');
+        }
+
+        if ($this->isEmailIdentifier($credentials['email']) && $this->attemptGuardLogin('admin', [
+            'email' => $credentials['email'],
+            'password' => $credentials['password'],
+        ])) {
+            $request->session()->regenerate();
+
+            return redirect()->intended(route('home'));
+        }
+
+        if ($suggestedEmail && $this->attemptGuardLogin('admin', [
+            'email' => $suggestedEmail,
+            'password' => $credentials['password'],
+        ])) {
+            $request->session()->regenerate();
+
+            return redirect()->intended(route('home'))
+                ->with('status', 'Signed in using the corrected email address.');
+        }
+
+        $response = back()
+            ->withInput($request->only('email'))
+            ->withErrors([
+                'email' => __('The provided credentials do not match our records.'),
+            ]);
+
+        if ($suggestedEmail) {
+            $response->with('login_email_suggestion', $suggestedEmail);
+        }
+
+        return $response;
+    }
+
+    protected function attemptGuardLogin(string $guard, array $credentials): bool
+    {
+        try {
+            return Auth::guard($guard)->attempt($credentials);
+        } catch (\RuntimeException $e) {
+            if ($this->repairPlainPassword($guard, $credentials)) {
+                return Auth::guard($guard)->attempt($credentials);
+            }
+        }
+
+        return false;
+    }
+
+    protected function repairPlainPassword(string $guard, array $credentials): bool
+    {
+        $password = $credentials['password'] ?? null;
+
+        if (! is_string($password) || $password === '') {
+            return false;
+        }
+
+        $query = $guard === 'admin' ? Admin::query() : User::query();
+
+        foreach ($credentials as $field => $value) {
+            if ($field === 'password') {
+                continue;
+            }
+
+            $query->where($field, $value);
+        }
+
+        /** @var Admin|User|null $user */
+        $user = $query->first();
+
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->getAuthPassword() === $password) {
+            $user->password = Hash::make($password);
+            $user->save();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public function showRegister()
+    {
+        if (Auth::check() || Auth::guard('admin')->check()) {
+            return redirect()->route('dashboard');
+        }
+
+        return view('auth.register');
+    }
+
+    public function register(Request $request)
+    {
+        $request->merge([
+            'email' => $this->normalizeLoginIdentifier($request->input('email')),
+            'id_number' => $this->normalizeNationalId($request->input('id_number')),
+        ]);
+
+        $rules = [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($this->emailAlreadyRegistered($value)) {
+                        $fail('This email address already exists in the system.');
+                    }
+                },
+            ],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'student_type' => ['required', 'in:continuing,new'],
+            'student_id' => ['required_if:student_type,continuing', 'nullable', 'string', 'max:100', Rule::unique('users', 'student_id')],
+            'id_number' => [
+                'required_if:student_type,new',
+                'nullable',
+                'string',
+                'max:100',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($this->nationalIdAlreadyRegistered($value)) {
+                        $fail('This national ID is already registered.');
+                    }
+                },
+            ],
+            'disability' => ['required', 'in:yes,no'],
+            'disability_details' => ['nullable', 'string', 'max:1000'],
+        ];
+
+        $data = $request->validate($rules);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+            'role' => 'student',
+            'student_type' => $data['student_type'],
+            'student_id' => $data['student_id'] ?? null,
+            'id_number' => $data['id_number'] ?? null,
+            'disability' => $data['disability'],
+            'disability_details' => $data['disability_details'] ?? null,
+        ]);
+
+        Student::create([
+            'user_id' => $user->id,
+            'student_type' => $data['student_type'],
+            'student_id' => $data['student_id'] ?? null,
+            'id_number' => $data['id_number'] ?? null,
+            'disability' => $data['disability'],
+            'disability_details' => $data['disability_details'] ?? null,
+        ]);
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
+        return redirect()->route('home')->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
+    }
+
+    public function showTemporaryPasswordForm()
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $user->password_temporary) {
+            return redirect()->route('home');
+        }
+
+        return view('auth.password-temp');
+    }
+
+    public function updateTemporaryPassword(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $user->password_temporary) {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->password = Hash::make($data['password']);
+        $user->password_temporary = false;
+        $user->temporary_password_expires_at = null;
+        $user->save();
+
+        return redirect()->route('home')->with('status', 'Password updated successfully.');
+    }
+
+    protected function redirectWebUserAfterLogin(User $user)
+    {
+        if ($user->password_temporary && $user->temporary_password_expires_at && now()->greaterThan($user->temporary_password_expires_at)) {
+            return redirect()->route('password.temporary');
+        }
+
+        return redirect()->intended(route('home'));
+    }
+
+    protected function normalizeLoginIdentifier(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        if ($this->isEmailIdentifier($value)) {
+            return Str::lower($value);
+        }
+
+        return $value;
+    }
+
+    protected function credentialsForWebLogin(string $identifier, string $password): array
+    {
+        if ($this->isEmailIdentifier($identifier)) {
+            return [
+                'email' => $identifier,
+                'password' => $password,
+            ];
+        }
+
+        return [
+            'student_id' => $identifier,
+            'password' => $password,
+        ];
+    }
+
+    protected function isEmailIdentifier(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
+    }
+
+    protected function suggestEmailCorrection(string $email): ?string
+    {
+        if (! str_contains($email, '@')) {
+            return null;
+        }
+
+        [$localPart, $domain] = explode('@', $email, 2);
+
+        $suggestedDomain = [
+            'gamil.com' => 'gmail.com',
+            'gmail.con' => 'gmail.com',
+            'gmial.com' => 'gmail.com',
+            'gnail.com' => 'gmail.com',
+            'hotnail.com' => 'hotmail.com',
+            'outlok.com' => 'outlook.com',
+            'outllok.com' => 'outlook.com',
+            'yaho.com' => 'yahoo.com',
+            'yhoo.com' => 'yahoo.com',
+        ][Str::lower($domain)] ?? null;
+
+        if (! $suggestedDomain) {
+            return null;
+        }
+
+        return $localPart . '@' . $suggestedDomain;
+    }
+
+    public function dashboard()
+    {
+        if (Auth::guard('admin')->check()) {
+            return view('admin.dashboard');
+        }
+
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        return view('dashboard');
+    }
+
+    public function clinic(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canAccessClinic($user)) {
+            return redirect()->route('home')->with('error', 'Clinic access is restricted to the senior nurse officer, executive, and SSD assistants.');
+        }
+
+        return $this->renderClinicPage($user, $request);
+    }
+
+    public function studentClinic()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canAccessClinic($user)) {
+            return redirect()->route('home')->with('error', 'Clinic access is restricted to the senior nurse officer, executive, and SSD assistants.');
+        }
+
+        return redirect()->route('clinic');
+    }
+
+    public function storeStudentClinic(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canAccessClinic($user)) {
+            return redirect()->route('home')->with('error', 'Clinic access is restricted to the senior nurse officer, executive, and SSD assistants.');
+        }
+
+        return redirect()->route('clinic');
+    }
+
+    public function counselling(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($this->canManageCounselling($user)) {
+            [
+                'reportType' => $reportType,
+                'reportYear' => $reportYear,
+                'reportMonth' => $reportMonth,
+                'reportSemester' => $reportSemester,
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'reportLabel' => $reportLabel,
+            ] = $this->reportFiltersFromRequest($request);
+
+            $bookings = CounsellingBooking::with('user')
+                ->latest()
+                ->get();
+
+            $reportBookings = $reportType === 'general'
+                ? $bookings
+                : $this->counsellingReportQuery($reportType, $startDate, $endDate)
+                    ->with('user')
+                    ->latest()
+                    ->get();
+
+            return view('counselling.psychologist', compact(
+                'user',
+                'bookings',
+                'reportBookings',
+                'reportType',
+                'reportYear',
+                'reportMonth',
+                'reportSemester',
+                'reportLabel'
+            ));
+        }
+
+        if (! $this->canAccessStudentCounselling($user)) {
+            return redirect()->route('home')->with('error', 'Only continuing students can access counselling services.');
+        }
+
+        $emergencyCounsellingModel = EmergencyCounsellingModel::fromConfig();
+        $datasetResponder = app(DatasetEmergencyCounsellingResponder::class);
+        $apiKey = config('services.openai.api_key');
+        $emergencyChatMeta = is_string($apiKey) && trim($apiKey) !== ''
+            ? [
+                'model' => $emergencyCounsellingModel->identifier(),
+                'model_label' => $emergencyCounsellingModel->label(),
+                'model_provider' => $emergencyCounsellingModel->provider(),
+                'model_description' => $emergencyCounsellingModel->description(),
+            ]
+            : $datasetResponder->meta();
+        $bookings = CounsellingBooking::where('user_id', $user->id)
+            ->latest()
+            ->get();
+
+        return view('counselling.student', compact('user', 'bookings', 'emergencyChatMeta'));
+    }
+
+    public function storeCounsellingBooking(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canAccessStudentCounselling($user)) {
+            return redirect()->route('home')->with('error', 'Only continuing students can access counselling services.');
+        }
+
+        $data = $request->validate([
+            'sex' => ['required', 'string', 'max:50'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'programme' => ['required', 'string', 'max:255'],
+            'year_of_study' => ['required', 'string', 'max:50'],
+            'preferred_date' => ['required', 'date', 'after_or_equal:today'],
+            'preferred_time' => ['required', 'date_format:H:i'],
+        ]);
+
+        CounsellingBooking::create([
+            'user_id' => $user->id,
+            'student_name' => $user->name,
+            'student_identity_number' => $user->student_id ?: $user->id_number,
+            'sex' => $data['sex'],
+            'reason' => $data['reason'],
+            'programme' => $data['programme'],
+            'year_of_study' => $data['year_of_study'],
+            'preferred_date' => $data['preferred_date'],
+            'preferred_time' => $data['preferred_time'],
+            'status' => 'pending',
+        ]);
+
+        return redirect()->route('counselling')->with('success', 'Counselling session booked successfully.');
+    }
+
+    public function updateCounsellingBooking(Request $request, CounsellingBooking $booking)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canManageCounselling($user)) {
+            return redirect()->route('home')->with('error', 'Only psychologists can manage counselling appointments.');
+        }
+
+        $data = $request->validate([
+            'status' => ['required', Rule::in($this->counsellingBookingStatuses())],
+            'appointment_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'counsellor_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $appointmentDate = $data['appointment_date'] ?? null;
+        $resolvedAppointmentDate = blank($appointmentDate)
+            ? $booking->appointment_date
+            : Carbon::parse($appointmentDate)->seconds(0);
+        $resolvedStatus = $data['status'];
+
+        if ($resolvedAppointmentDate && $resolvedStatus === 'pending') {
+            $resolvedStatus = 'scheduled';
+        }
+
+        if ($resolvedStatus === 'cancelled') {
+            $resolvedAppointmentDate = null;
+        }
+
+        if (in_array($resolvedStatus, ['scheduled', 'attended'], true) && ! $resolvedAppointmentDate) {
+            return back()
+                ->withErrors([
+                    'appointment_date' => 'Set an appointment date and time before marking this booking as scheduled or attended.',
+                ])
+                ->withInput();
+        }
+
+        if ($resolvedAppointmentDate) {
+            $hasConflict = CounsellingBooking::query()
+                ->whereKeyNot($booking->id)
+                ->whereNotNull('appointment_date')
+                ->where('appointment_date', $resolvedAppointmentDate->format('Y-m-d H:i:s'))
+                ->exists();
+
+            if ($hasConflict) {
+                return back()
+                    ->withErrors([
+                        'appointment_date' => 'That appointment date and time is already booked. Choose another slot.',
+                    ])
+                    ->withInput();
+            }
+        }
+
+        $booking->update([
+            'status' => $resolvedStatus,
+            'appointment_date' => $resolvedAppointmentDate,
+            'counsellor_notes' => $data['counsellor_notes'] ?? null,
+        ]);
+
+        return redirect()->route('counselling')->with('success', 'Counselling appointment updated successfully.');
+    }
+
+    public function emergencyCounsellingReply(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return response()->json([
+                'message' => 'Please sign in to continue.',
+            ], 401);
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canAccessStudentCounselling($user)) {
+            return response()->json([
+                'message' => 'Only continuing students can access counselling services.',
+            ], 403);
+        }
+
+        $emergencyCounsellingModel = EmergencyCounsellingModel::fromConfig();
+        $datasetResponder = app(DatasetEmergencyCounsellingResponder::class);
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+            'messages' => ['nullable', 'array', 'max:10'],
+            'messages.*.role' => ['required_with:messages', 'in:user,assistant'],
+            'messages.*.content' => ['required_with:messages', 'string', 'max:2000'],
+        ]);
+
+        $history = collect($data['messages'] ?? [])
+            ->take(-8)
+            ->map(function (array $message) {
+                return [
+                    'role' => $message['role'],
+                    'content' => $message['content'],
+                ];
+            })
+            ->values()
+            ->all();
+
+        $apiKey = config('services.openai.api_key');
+        if (! is_string($apiKey) || trim($apiKey) === '') {
+            return response()->json($datasetResponder->respond($data['message'], $history));
+        }
+
+        $payload = $emergencyCounsellingModel->buildPayload($data['message'], $history);
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->acceptJson()
+                ->timeout(45)
+                ->post('https://api.openai.com/v1/responses', $payload)
+                ->throw()
+                ->json();
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json($datasetResponder->respond($data['message'], $history));
+        }
+
+        $reply = $this->extractEmergencyCounsellingReply((array) $response);
+        if (! $reply) {
+            return response()->json($datasetResponder->respond($data['message'], $history));
+        }
+
+        return response()->json([
+            'reply' => $reply,
+            'model' => $payload['model'],
+            'model_label' => $emergencyCounsellingModel->label(),
+            'model_provider' => $emergencyCounsellingModel->provider(),
+            'model_description' => $emergencyCounsellingModel->description(),
+        ]);
+    }
+
+    public function storeClinicStock(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'senior_nurse_officer') {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'stock_entries' => ['required', 'array', 'min:1'],
+            'stock_entries.*.medicine_name' => ['required', 'string', 'max:255'],
+            'stock_entries.*.quantity_received' => ['required', 'integer', 'min:0'],
+        ]);
+
+        foreach ($data['stock_entries'] as $entry) {
+            $existingItem = ClinicStockItem::whereRaw('LOWER(medicine_name) = ?', [strtolower($entry['medicine_name'])])->first();
+            $receivedQuantity = (int) $entry['quantity_received'];
+
+            if ($existingItem) {
+                $openingStock = $existingItem->opening_stock;
+                $quantityReceived = $existingItem->quantity_received + $receivedQuantity;
+                $quantityIssued = $existingItem->quantity_issued;
+
+                $existingItem->update([
+                    'opening_stock' => $openingStock,
+                    'quantity_received' => $quantityReceived,
+                    'quantity_issued' => $quantityIssued,
+                    'confirmed_at' => null,
+                    'confirmed_by_user_id' => null,
+                    'status' => $this->resolveClinicStockStatus($openingStock + $quantityReceived - $quantityIssued),
+                ]);
+
+                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity);
+                continue;
+            }
+
+            $entry['status'] = $this->resolveClinicStockStatus(
+                $entry['quantity_received']
+            );
+            $entry['opening_stock'] = 0;
+            $entry['quantity_issued'] = 0;
+
+            $createdItem = ClinicStockItem::create($entry);
+            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity);
+        }
+
+        return redirect()->route('clinic')->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
+    }
+
+    public function accommodation()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+        $application = AccommodationApplication::with('room')
+            ->where('user_id', $user->id)
+            ->latest('updated_at')
+            ->latest('id')
+            ->first();
+
+        if ($user->role === 'executive') {
+            $this->ensureDefaultAccommodationRoomsExist();
+
+            $pendingAdmissionsCount = AccommodationApplication::where('status', 'pending')->count();
+            $checkoutApprovalsCount = AccommodationApplication::where('status', 'checkout_requested')->count();
+            $availableRoomsCount = AccommodationRoom::withCount([
+                    'applications as occupied_beds' => function ($query) {
+                        $query->whereIn('status', $this->occupyingAccommodationStatuses());
+                    },
+                ])
+                ->get()
+                ->filter(function ($room) {
+                    return $room->occupied_beds < $room->capacity;
+                })
+                ->count();
+
+            return view('accommodation.executive', compact(
+                'user',
+                'pendingAdmissionsCount',
+                'checkoutApprovalsCount',
+                'availableRoomsCount'
+            ));
+        }
+
+        if ($user->role === 'warden') {
+            $this->ensureDefaultAccommodationRoomsExist();
+
+            $admittedApplications = AccommodationApplication::with(['user', 'room'])
+                ->whereIn('status', $this->occupyingAccommodationStatuses())
+                ->latest()
+                ->get();
+
+            $rooms = AccommodationRoom::withCount([
+                    'applications as occupied_beds' => function ($query) {
+                        $query->whereIn('status', $this->occupyingAccommodationStatuses());
+                    },
+                ])
+                ->orderBy('block_name')
+                ->orderBy('room_number')
+                ->get()
+                ->groupBy('block_name');
+
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms'));
+        }
+
+        return view('accommodation.student', compact('user', 'application'));
+    }
+
+    public function pendingAdmissions()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if (! in_array($user->role, ['executive', 'warden'], true)) {
+            return redirect()->route('accommodation');
+        }
+
+        $this->ensureDefaultAccommodationRoomsExist();
+
+        $applications = AccommodationApplication::with('user')
+            ->where('status', 'pending')
+            ->latest()
+            ->get();
+
+        $availableRooms = AccommodationRoom::withCount([
+                'applications as occupied_beds' => function ($query) {
+                    $query->whereIn('status', $this->occupyingAccommodationStatuses());
+                },
+            ])
+            ->orderBy('block_name')
+            ->orderBy('room_number')
+            ->get()
+            ->filter(function ($room) {
+                return $room->occupied_beds < $room->capacity;
+            })
+            ->values();
+
+        return view('accommodation.pending-admissions', compact('user', 'applications', 'availableRooms'));
+    }
+
+    public function roomManagement()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        $this->ensureDefaultAccommodationRoomsExist();
+
+        $rooms = AccommodationRoom::withCount([
+                'applications as occupied_beds' => function ($query) {
+                    $query->whereIn('status', $this->occupyingAccommodationStatuses());
+                },
+            ])
+            ->orderBy('block_name')
+            ->orderBy('room_number')
+            ->get()
+            ->groupBy('block_name');
+
+        return view('accommodation.rooms', compact('user', 'rooms'));
+    }
+
+    public function accommodationReport(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation')->with('error', 'Only executive can view accommodation reports.');
+        }
+
+        $this->ensureDefaultAccommodationRoomsExist();
+
+        return view('accommodation.report', array_merge(
+            ['user' => $user],
+            $this->buildAccommodationReportData(null, $request->query('year'))
+        ));
+    }
+
+    public function downloadAccommodationReport(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation')->with('error', 'Only executive can download accommodation reports.');
+        }
+
+        $this->ensureDefaultAccommodationRoomsExist();
+
+        $reportData = $this->buildAccommodationReportData(null, $request->query('year'));
+        $currentIntake = $reportData['currentIntake'];
+        $selectedYear = $reportData['selectedYear'];
+        $availableIntakes = $reportData['availableIntakes'];
+
+        if (! $selectedYear) {
+            return redirect()
+                ->route('accommodation.report')
+                ->with('error', 'No yearly accommodation report is available yet.');
+        }
+
+        $applications = $reportData['applications'];
+        $pendingApplications = $reportData['pendingApplications'];
+        $checkoutRequests = $reportData['checkoutRequests'];
+        $statusSummary = $reportData['statusSummary'];
+        $rooms = $reportData['rooms'];
+        $availableRoomsCount = $reportData['availableRoomsCount'];
+        $occupiedRoomsCount = $reportData['occupiedRoomsCount'];
+        $occupiedBedsCount = $reportData['occupiedBedsCount'];
+        $availableBedsCount = $reportData['availableBedsCount'];
+        $totalCapacity = $reportData['totalCapacity'];
+
+        $fileName = 'accommodation-report-' . $selectedYear . '-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use (
+            $applications,
+            $availableIntakes,
+            $currentIntake,
+            $selectedYear,
+            $availableBedsCount,
+            $availableRoomsCount,
+            $checkoutRequests,
+            $occupiedBedsCount,
+            $occupiedRoomsCount,
+            $pendingApplications,
+            $rooms,
+            $statusSummary,
+            $totalCapacity,
+            $user
+        ) {
+            $handle = fopen('php://output', 'w');
+
+            fputcsv($handle, ['Accommodation Management Report']);
+            fputcsv($handle, ['Selected Year', $selectedYear]);
+            fputcsv($handle, ['Latest Intake In Year', $currentIntake ?? 'Not available']);
+            fputcsv($handle, ['Intakes In Scope', $availableIntakes->implode(', ') ?: 'Not available']);
+            fputcsv($handle, ['Generated By', $user->name ?: 'Executive']);
+            fputcsv($handle, ['Generated At', now()->format('Y-m-d H:i:s')]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Dashboard Summary']);
+            fputcsv($handle, ['Pending Admissions', $pendingApplications->count()]);
+            fputcsv($handle, ['Checkout Approvals', $checkoutRequests->count()]);
+            fputcsv($handle, ['Available Rooms', $availableRoomsCount]);
+            fputcsv($handle, ['Occupied Rooms', $occupiedRoomsCount]);
+            fputcsv($handle, ['Occupied Beds', $occupiedBedsCount]);
+            fputcsv($handle, ['Available Beds', $availableBedsCount]);
+            fputcsv($handle, ['Total Room Capacity', $totalCapacity]);
+            fputcsv($handle, ['Total Applications', $applications->count()]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Application Status Breakdown']);
+            fputcsv($handle, ['Status', 'Count']);
+            if ($statusSummary->isEmpty()) {
+                fputcsv($handle, ['No accommodation applications found.', '']);
+            } else {
+                foreach ($statusSummary as $status => $count) {
+                    fputcsv($handle, [$status, $count]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Selected Year Applications']);
+            fputcsv($handle, ['Student Name', 'Student ID', 'Faculty', 'Programme', 'Status', 'Room', 'Check-In Date', 'Updated']);
+            if ($applications->isEmpty()) {
+                fputcsv($handle, ['No accommodation applications found for this year.', '', '', '', '', '', '', '']);
+            } else {
+                foreach ($applications as $application) {
+                    fputcsv($handle, [
+                        $application->full_name,
+                        $application->student_id ?: optional($application->user)->student_id ?: '',
+                        $application->faculty,
+                        $application->programme,
+                        Str::headline($application->status),
+                        $this->formatAccommodationRoomLabel($application->room) ?? 'Not assigned',
+                        optional($application->check_in_date)->format('Y-m-d') ?? '',
+                        optional($application->updated_at)->format('Y-m-d H:i:s') ?? optional($application->created_at)->format('Y-m-d H:i:s') ?? '',
+                    ]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Pending Admissions']);
+            fputcsv($handle, ['Student Name', 'Student ID', 'Application Email', 'Account Email', 'Faculty', 'Programme', 'Check-In Date', 'Submitted']);
+            if ($pendingApplications->isEmpty()) {
+                fputcsv($handle, ['No pending admissions.', '', '', '', '', '', '', '']);
+            } else {
+                foreach ($pendingApplications as $application) {
+                    fputcsv($handle, [
+                        $application->full_name,
+                        $application->student_id ?: optional($application->user)->student_id ?: '',
+                        $application->email,
+                        optional($application->user)->email ?? '',
+                        $application->faculty,
+                        $application->programme,
+                        optional($application->check_in_date)->format('Y-m-d') ?? '',
+                        optional($application->created_at)->format('Y-m-d H:i:s') ?? '',
+                    ]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Checkout Requests']);
+            fputcsv($handle, ['Student Name', 'Student ID', 'Room', 'Checkout Date', 'Requested At', 'Reason']);
+            if ($checkoutRequests->isEmpty()) {
+                fputcsv($handle, ['No checkout requests awaiting approval.', '', '', '', '', '']);
+            } else {
+                foreach ($checkoutRequests as $application) {
+                    fputcsv($handle, [
+                        $application->full_name,
+                        $application->student_id ?: optional($application->user)->student_id ?: '',
+                        $this->formatAccommodationRoomLabel($application->room) ?? 'Not assigned',
+                        optional($application->checkout_date)->format('Y-m-d') ?? '',
+                        optional($application->checkout_requested_at)->format('Y-m-d H:i:s')
+                            ?? optional($application->updated_at)->format('Y-m-d H:i:s')
+                            ?? '',
+                        $application->checkout_reason ?? '',
+                    ]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Room Availability']);
+            fputcsv($handle, ['Block', 'Room Number', 'Capacity', 'Occupied Beds', 'Available Beds', 'Occupancy Status']);
+            foreach ($rooms as $room) {
+                $availableBeds = max(0, $room->capacity - $room->occupied_beds);
+
+                fputcsv($handle, [
+                    $room->block_name,
+                    str_pad((string) $room->room_number, 2, '0', STR_PAD_LEFT),
+                    $room->capacity,
+                    $room->occupied_beds,
+                    $availableBeds,
+                    $availableBeds > 0 ? 'Available' : 'Full',
+                ]);
+            }
+
+            fclose($handle);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function storeRoom(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        $data = $request->validate([
+            'block_name' => ['required', 'string', 'max:20'],
+            'room_number' => ['required', 'integer', 'min:1', 'max:999'],
+        ]);
+
+        $blockName = strtoupper(trim($data['block_name']));
+
+        AccommodationRoom::firstOrCreate(
+            [
+                'block_name' => $blockName,
+                'room_number' => $data['room_number'],
+            ],
+            [
+                'capacity' => 4,
+            ]
+        );
+
+        return redirect()->route('student.accommodation.rooms')->with('success', 'Room created successfully in block ' . $blockName . '.');
+    }
+
+    public function seedDefaultRooms()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        $this->ensureDefaultAccommodationRoomsExist();
+
+        return redirect()->route('student.accommodation.rooms')->with('success', 'Default room blocks AG and AF have been created with 15 rooms each.');
+    }
+
+    protected function ensureDefaultAccommodationRoomsExist(): void
+    {
+        if (AccommodationRoom::exists()) {
+            return;
+        }
+
+        foreach (['AG', 'AF'] as $blockName) {
+            for ($roomNumber = 1; $roomNumber <= 15; $roomNumber++) {
+                AccommodationRoom::firstOrCreate(
+                    [
+                        'block_name' => $blockName,
+                        'room_number' => $roomNumber,
+                    ],
+                    [
+                        'capacity' => 4,
+                    ]
+                );
+            }
+        }
+    }
+
+    public function updateAdmissionStatus(Request $request, AccommodationApplication $application)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        $data = $request->validate([
+            'status' => ['required', 'in:admitted,rejected,conditional'],
+            'accommodation_room_id' => ['nullable', 'exists:accommodation_rooms,id'],
+            'rejection_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $roomId = $data['accommodation_room_id'] ?? null;
+
+        if ($data['status'] === 'admitted') {
+            if (! $roomId) {
+                return redirect()
+                    ->route('student.accommodation.pending')
+                    ->withErrors(['accommodation_room_id' => 'Please select a room before approving the student.'])
+                    ->withInput();
+            }
+
+            $room = AccommodationRoom::withCount([
+                    'applications as occupied_beds' => function ($query) {
+                        $query->whereIn('status', $this->occupyingAccommodationStatuses());
+                    },
+                ])
+                ->findOrFail($roomId);
+
+            if ($room->occupied_beds >= $room->capacity) {
+                return redirect()
+                    ->route('student.accommodation.pending')
+                    ->withErrors(['accommodation_room_id' => 'The selected room is already full. Please choose another room.'])
+                    ->withInput();
+            }
+        }
+
+        if ($data['status'] === 'rejected' && blank($data['rejection_reason'] ?? null)) {
+            return redirect()
+                ->route('student.accommodation.pending')
+                ->withErrors(['rejection_reason' => 'Please provide a reason when rejecting the application.'])
+                ->withInput();
+        }
+
+        $updatePayload = [
+            'status' => $data['status'],
+            'accommodation_room_id' => $data['status'] === 'admitted' ? $roomId : null,
+        ];
+
+        if (Schema::hasColumn('accommodation_applications', 'rejection_reason')) {
+            $updatePayload['rejection_reason'] = $data['status'] === 'rejected'
+                ? trim((string) ($data['rejection_reason'] ?? ''))
+                : null;
+        }
+
+        $application->update($updatePayload);
+
+        $this->sendAccommodationStatusEmail($application);
+
+        return redirect()
+            ->route('student.accommodation.pending')
+            ->with('success', 'Application status updated to ' . ucfirst($data['status']) . '.');
+    }
+
+    public function applyAccommodation()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role === 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        if ($user->student_type !== 'new') {
+            return redirect()->route('accommodation')->with('error', 'Only new students can submit accommodation applications.');
+        }
+
+        $existing = $this->findExistingAccommodationApplication(
+            $user,
+            $this->normalizeNationalId($user->id_number)
+        );
+
+        if ($existing) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', $this->duplicateAccommodationApplicationMessage($existing, $user));
+        }
+
+        $applicationFee = $this->accommodationApplicationFee();
+
+        return view('accommodation.apply', compact('user', 'applicationFee'));
+    }
+
+    public function checkoutAccommodation()
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role === 'executive') {
+            $applicationsQuery = AccommodationApplication::with(['user', 'room'])
+                ->where('status', 'checkout_requested');
+
+            if (Schema::hasColumn('accommodation_applications', 'checkout_requested_at')) {
+                $applicationsQuery->orderByDesc('checkout_requested_at');
+            } else {
+                $applicationsQuery->latest('updated_at');
+            }
+
+            $applications = $applicationsQuery
+                ->latest('id')
+                ->get();
+
+            return view('accommodation.checkout-approvals', compact('user', 'applications'));
+        }
+
+        if ($user->student_type !== 'new') {
+            return redirect()->route('accommodation')->with('error', 'Only new students can submit checkout requests.');
+        }
+
+        $application = AccommodationApplication::where('user_id', $user->id)
+            ->whereIn('status', $this->checkoutEligibleStatuses())
+            ->latest()
+            ->first();
+
+        if (! $application) {
+            return redirect()->route('accommodation')->with('error', 'Checkout is available only after your accommodation has been admitted.');
+        }
+
+        return view('accommodation.checkout', compact('user', 'application'));
+    }
+
+    public function storeAccommodation(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role === 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        if ($user->student_type !== 'new') {
+            return redirect()->route('accommodation')->with('error', 'Only new students can submit accommodation applications.');
+        }
+
+        $request->merge([
+            'email' => is_string($request->input('email'))
+                ? Str::lower(trim($request->input('email')))
+                : $request->input('email'),
+            'national_id' => $this->normalizeNationalId($request->input('national_id')),
+        ]);
+
+        $data = $request->validate([
+            'full_name' => ['required', 'string', 'max:255'],
+            'student_id' => ['required', 'string', 'max:100', 'regex:/^\d+$/'],
+            'contact_number' => ['required', 'string', 'max:50'],
+            'national_id' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:255'],
+            'marital_status' => ['required', 'string', 'max:100'],
+            'nationality' => ['required', 'string', 'max:100'],
+            'gender' => ['required', 'in:male,female'],
+            'age' => ['required', 'integer', 'min:16', 'max:120'],
+            'faculty' => ['required', 'string', 'max:100'],
+            'programme' => ['required', 'string', 'max:255'],
+            'intake' => ['required', 'string', 'max:100'],
+            'semester' => ['required', 'string', 'max:100'],
+            'check_in_date' => ['required', 'date'],
+            'district' => ['required', 'string', 'max:255'],
+            'village' => ['required', 'string', 'max:255'],
+            'next_of_kin_name' => ['required', 'string', 'max:255'],
+            'next_of_kin_relationship' => ['required', 'string', 'max:100'],
+            'next_of_kin_contact' => ['required', 'string', 'max:100'],
+            'special_conditions_remark' => ['nullable', 'string', 'max:2000'],
+            'has_physical_disability' => ['required', 'boolean'],
+            'physical_disability_details' => ['nullable', 'string', 'max:1000', 'required_if:has_physical_disability,1'],
+            'has_high_blood_pressure' => ['required', 'boolean'],
+            'has_diabetes' => ['required', 'boolean'],
+            'has_asthma' => ['required', 'boolean'],
+            'chronic_illness_other' => ['nullable', 'string', 'max:1000'],
+            'on_chronic_treatment' => ['required', 'boolean'],
+            'treatment_frequency' => ['nullable', 'string', 'max:1000', 'required_if:on_chronic_treatment,1'],
+            'payment_method' => ['required', 'in:mpesa,ecocash'],
+            'payment_phone_number' => ['required', 'string', 'max:50'],
+        ], [
+            'student_id.regex' => 'Student ID must contain numbers only.',
+        ]);
+
+        foreach ([
+            'has_physical_disability',
+            'has_high_blood_pressure',
+            'has_diabetes',
+            'has_asthma',
+            'on_chronic_treatment',
+        ] as $booleanField) {
+            $data[$booleanField] = $request->boolean($booleanField);
+        }
+
+        if (! $data['has_physical_disability']) {
+            $data['physical_disability_details'] = null;
+        }
+
+        if (! $data['on_chronic_treatment']) {
+            $data['treatment_frequency'] = null;
+        }
+
+        $existing = $this->findExistingAccommodationApplication($user, $data['national_id']);
+
+        if ($existing) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', $this->duplicateAccommodationApplicationMessage($existing, $user));
+        }
+
+        $applicationFee = $this->accommodationApplicationFee();
+
+        $paymentReference = 'ACC-' . now()->format('YmdHis') . '-' . strtoupper((string) $user->id);
+
+        $applicationPayload = [
+            'user_id' => $user->id,
+            'full_name' => $data['full_name'],
+            'student_id' => $data['student_id'],
+            'contact_number' => $data['contact_number'],
+            'national_id' => $data['national_id'],
+            'email' => $data['email'],
+            'marital_status' => $data['marital_status'],
+            'nationality' => $data['nationality'],
+            'gender' => $data['gender'],
+            'age' => $data['age'],
+            'faculty' => $data['faculty'],
+            'programme' => $data['programme'],
+            'intake' => $data['intake'],
+            'semester' => $data['semester'],
+            'check_in_date' => $data['check_in_date'],
+            'address' => collect([$data['district'], $data['village']])->filter()->implode(', '),
+            'status' => 'pending',
+        ];
+
+        foreach ([
+            'student_id',
+            'gender',
+            'intake',
+            'semester',
+            'district',
+            'village',
+            'next_of_kin_name',
+            'next_of_kin_relationship',
+            'next_of_kin_contact',
+            'special_conditions_remark',
+            'has_physical_disability',
+            'physical_disability_details',
+            'has_high_blood_pressure',
+            'has_diabetes',
+            'has_asthma',
+            'chronic_illness_other',
+            'on_chronic_treatment',
+            'treatment_frequency',
+        ] as $column) {
+            if (Schema::hasColumn('accommodation_applications', $column)) {
+                $applicationPayload[$column] = $data[$column] ?? null;
+            }
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'payment_method')) {
+            $applicationPayload['payment_method'] = $data['payment_method'];
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'payment_phone_number')) {
+            $applicationPayload['payment_phone_number'] = $data['payment_phone_number'];
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'payment_reference')) {
+            $applicationPayload['payment_reference'] = $paymentReference;
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'payment_amount')) {
+            $applicationPayload['payment_amount'] = $applicationFee;
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'payment_status')) {
+            $applicationPayload['payment_status'] = 'paid';
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'paid_at')) {
+            $applicationPayload['paid_at'] = now();
+        }
+
+        AccommodationApplication::create($applicationPayload);
+
+        return redirect()->route('accommodation')->with('success', 'Accommodation application submitted successfully. Payment received via ' . strtoupper($data['payment_method']) . '.');
+    }
+
+    public function storeCheckout(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->student_type !== 'new') {
+            return redirect()->route('accommodation')->with('error', 'Only new students can submit checkout requests.');
+        }
+
+        $application = AccommodationApplication::where('user_id', $user->id)
+            ->whereIn('status', $this->checkoutEligibleStatuses())
+            ->latest()
+            ->first();
+
+        if (! $application) {
+            return redirect()->route('accommodation')->with('error', 'Checkout is available only after your accommodation has been admitted.');
+        }
+
+        $data = $request->validate([
+            'full_name' => ['required', 'string', 'max:255'],
+            'student_id' => ['required', 'string', 'max:100'],
+            'checkout_date' => ['required', 'date'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $checkoutPayload = [
+            'status' => 'checkout_requested',
+        ];
+
+        if (Schema::hasColumn('accommodation_applications', 'checkout_date')) {
+            $checkoutPayload['checkout_date'] = $data['checkout_date'];
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'checkout_reason')) {
+            $checkoutPayload['checkout_reason'] = $data['reason'];
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'checkout_requested_at')) {
+            $checkoutPayload['checkout_requested_at'] = now();
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'checked_out_at')) {
+            $checkoutPayload['checked_out_at'] = null;
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'rejection_reason')) {
+            $checkoutPayload['rejection_reason'] = null;
+        }
+
+        $application->update($checkoutPayload);
+
+        $checkoutEmail = $application->email ?: optional($application->user)->email;
+
+        if ($checkoutEmail) {
+            try {
+                Mail::to($checkoutEmail)->send(new CheckoutRequestSubmitted($application));
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return redirect()->route('accommodation')->with('success', 'Checkout request submitted successfully.');
+    }
+
+    public function updateCheckoutStatus(Request $request, AccommodationApplication $application)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        if ($application->status !== 'checkout_requested') {
+            return redirect()
+                ->route('student.accommodation.checkout')
+                ->with('error', 'Only pending checkout requests can be processed.');
+        }
+
+        $data = $request->validate([
+            'decision' => ['required', 'in:approved,rejected'],
+            'rejection_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($data['decision'] === 'rejected' && blank($data['rejection_reason'] ?? null)) {
+            return redirect()
+                ->route('student.accommodation.checkout')
+                ->withErrors(['rejection_reason' => 'Please provide a reason when rejecting the checkout request.'])
+                ->withInput();
+        }
+
+        $application->loadMissing(['user', 'room']);
+        $previousRoomLabel = $this->formatAccommodationRoomLabel($application->room);
+
+        $approvalPayload = [
+            'status' => $data['decision'] === 'approved' ? 'checked_out' : 'checkout_rejected',
+        ];
+
+        if ($data['decision'] === 'approved') {
+            $approvalPayload['accommodation_room_id'] = null;
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'checked_out_at')) {
+            $approvalPayload['checked_out_at'] = $data['decision'] === 'approved' ? now() : null;
+        }
+
+        if (Schema::hasColumn('accommodation_applications', 'rejection_reason')) {
+            $approvalPayload['rejection_reason'] = $data['decision'] === 'rejected'
+                ? trim((string) ($data['rejection_reason'] ?? ''))
+                : null;
+        }
+
+        $application->update($approvalPayload);
+
+        $checkoutApprovalEmail = $application->email ?: optional($application->user)->email;
+
+        if ($checkoutApprovalEmail) {
+            try {
+                $application->refresh()->loadMissing(['user', 'room']);
+
+                $mailable = $data['decision'] === 'approved'
+                    ? new CheckoutApproved($application, $previousRoomLabel)
+                    : new CheckoutRejected($application);
+
+                Mail::to($checkoutApprovalEmail)->send($mailable);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return redirect()
+            ->route('student.accommodation.checkout')
+            ->with(
+                'success',
+                $data['decision'] === 'approved'
+                    ? 'Checkout approved successfully and the allocated room has been released.'
+                    : 'Checkout request rejected successfully.'
+            );
+    }
+
+    public function updateClinicStock(Request $request, ClinicStockItem $item)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'senior_nurse_officer') {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'opening_stock' => ['required', 'integer', 'min:0'],
+            'quantity_received' => ['required', 'integer', 'min:0'],
+            'quantity_issued' => ['required', 'integer', 'min:0'],
+            'status' => ['required', 'in:pending_review,in_stock,low_stock,out_of_stock'],
+        ]);
+
+        $previousQuantityReceived = $item->quantity_received;
+        $balance = $data['opening_stock'] + $data['quantity_received'] - $data['quantity_issued'];
+
+        $item->update([
+            'opening_stock' => $data['opening_stock'],
+            'quantity_received' => $data['quantity_received'],
+            'quantity_issued' => $data['quantity_issued'],
+            'confirmed_at' => $data['quantity_received'] > 0 ? null : $item->confirmed_at,
+            'confirmed_by_user_id' => $data['quantity_received'] > 0 ? null : $item->confirmed_by_user_id,
+            'status' => $this->resolveClinicStockStatus($balance),
+        ]);
+
+        $newlyRecordedReceived = $data['quantity_received'] - $previousQuantityReceived;
+        if ($newlyRecordedReceived > 0) {
+            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived);
+        }
+
+        return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock updated successfully.');
+    }
+
+    public function confirmClinicStock(ClinicStockItem $item)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! in_array($user->role, ['senior_nurse_officer', 'executive'], true)) {
+            return redirect()->route('home');
+        }
+
+        $newOpeningStock = $item->opening_stock + $item->quantity_received;
+
+        $item->update([
+            'opening_stock' => $newOpeningStock,
+            'quantity_received' => 0,
+            'confirmed_at' => now(),
+            'confirmed_by_user_id' => $user->id,
+            'status' => $this->resolveClinicStockStatus($newOpeningStock - $item->quantity_issued),
+        ]);
+
+        return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock confirmed successfully.');
+    }
+
+    public function deleteClinicStock(ClinicStockItem $item)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! in_array($user->role, ['senior_nurse_officer', 'executive'], true)) {
+            return redirect()->route('home');
+        }
+
+        $medicineName = $item->medicine_name;
+        $item->delete();
+
+        return redirect()->route('clinic')->with('success', $medicineName . ' has been deleted from stock.');
+    }
+
+    public function commentClinicStock(Request $request, ClinicStockItem $item)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! in_array($user->role, ['senior_nurse_officer', 'executive'], true)) {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:1000'],
+            'parent_id' => ['nullable', 'exists:clinic_stock_comments,id'],
+        ]);
+
+        ClinicStockComment::create([
+            'clinic_stock_item_id' => $item->id,
+            'user_id' => $user->id,
+            'parent_id' => $data['parent_id'] ?? null,
+            'message' => $data['message'],
+        ]);
+
+        return redirect()->route('clinic')->with('success', 'Comment saved for ' . $item->medicine_name . '.');
+    }
+
+    public function storeClinicStockUsage(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'senior_nurse_officer') {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'clinic_stock_item_id' => ['required', 'exists:clinic_stock_items,id'],
+            'student_id' => ['required', 'string', 'max:100'],
+            'quantity_issued' => ['required', 'integer', 'min:1'],
+            'diagnosis' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $item = ClinicStockItem::findOrFail($data['clinic_stock_item_id']);
+        $nextIssued = $item->quantity_issued + $data['quantity_issued'];
+
+        if ($nextIssued > ($item->opening_stock + $item->quantity_received)) {
+            return redirect()->route('clinic')->withErrors([
+                'quantity_issued' => 'Issued quantity cannot exceed available stock for ' . $item->medicine_name . '.',
+            ]);
+        }
+
+        ClinicStockUsage::create([
+            'clinic_stock_item_id' => $item->id,
+            'user_id' => $user->id,
+            'student_id' => $data['student_id'],
+            'quantity_issued' => $data['quantity_issued'],
+            'diagnosis' => $data['diagnosis'],
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->syncClinicStockItemIssued($item, $nextIssued);
+
+        return redirect()->route('clinic')->with('success', 'Stock usage recorded for ' . $item->medicine_name . '.');
+    }
+
+    public function updateClinicStockUsage(Request $request, ClinicStockUsage $usage)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'senior_nurse_officer') {
+            return redirect()->route('home');
+        }
+
+        $data = $request->validate([
+            'clinic_stock_item_id' => ['required', 'exists:clinic_stock_items,id'],
+            'student_id' => ['required', 'string', 'max:100'],
+            'quantity_issued' => ['required', 'integer', 'min:1'],
+            'diagnosis' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $oldItem = ClinicStockItem::findOrFail($usage->clinic_stock_item_id);
+        $newItem = ClinicStockItem::findOrFail($data['clinic_stock_item_id']);
+
+        if ($oldItem->id === $newItem->id) {
+            $nextIssued = max(0, $oldItem->quantity_issued - $usage->quantity_issued + $data['quantity_issued']);
+
+            if ($nextIssued > ($oldItem->opening_stock + $oldItem->quantity_received)) {
+                return redirect()->route('clinic')->withErrors([
+                    'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $oldItem->medicine_name . '.',
+                ]);
+            }
+
+            $usage->update([
+                'student_id' => $data['student_id'],
+                'quantity_issued' => $data['quantity_issued'],
+                'diagnosis' => $data['diagnosis'],
+            ]);
+
+            $this->syncClinicStockItemIssued($oldItem, $nextIssued);
+
+            return redirect()->route('clinic')->with('success', 'Stock usage updated successfully.');
+        }
+
+        $oldItemNextIssued = max(0, $oldItem->quantity_issued - $usage->quantity_issued);
+        $newItemNextIssued = $newItem->quantity_issued + $data['quantity_issued'];
+
+        if ($newItemNextIssued > ($newItem->opening_stock + $newItem->quantity_received)) {
+            return redirect()->route('clinic')->withErrors([
+                'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $newItem->medicine_name . '.',
+            ]);
+        }
+
+        $usage->update([
+            'clinic_stock_item_id' => $newItem->id,
+            'student_id' => $data['student_id'],
+            'quantity_issued' => $data['quantity_issued'],
+            'diagnosis' => $data['diagnosis'],
+        ]);
+
+        $this->syncClinicStockItemIssued($oldItem, $oldItemNextIssued);
+        $this->syncClinicStockItemIssued($newItem, $newItemNextIssued);
+
+        return redirect()->route('clinic')->with('success', 'Stock usage updated successfully.');
+    }
+
+    public function deleteClinicStockUsage(ClinicStockUsage $usage)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'senior_nurse_officer') {
+            return redirect()->route('home');
+        }
+
+        $item = ClinicStockItem::findOrFail($usage->clinic_stock_item_id);
+        $nextIssued = max(0, $item->quantity_issued - $usage->quantity_issued);
+
+        $usage->delete();
+        $this->syncClinicStockItemIssued($item, $nextIssued);
+
+        return redirect()->route('clinic')->with('success', 'Stock usage deleted successfully.');
+    }
+
+    public function downloadClinicReport(Request $request)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canGenerateClinicReport($user)) {
+            return redirect()->route('clinic')->with('error', 'Only executive and senior nurse officer can download clinic reports.');
+        }
+
+        [
+            'reportType' => $reportType,
+            'reportYear' => $reportYear,
+            'reportMonth' => $reportMonth,
+            'reportSemester' => $reportSemester,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'reportLabel' => $reportLabel,
+        ] = $this->reportFiltersFromRequest($request);
+
+        $stockUsagesQuery = ClinicStockUsage::with(['stockItem']);
+        $stockReceiptsQuery = ClinicStockReceipt::query()
+            ->join('clinic_stock_items', 'clinic_stock_receipts.clinic_stock_item_id', '=', 'clinic_stock_items.id')
+            ->select('clinic_stock_receipts.*', 'clinic_stock_items.medicine_name as stock_medicine_name');
+
+        if ($reportType !== 'general') {
+            $stockUsagesQuery->whereBetween('usage_date', [$startDate->toDateString(), $endDate->toDateString()]);
+            $stockReceiptsQuery->whereBetween('clinic_stock_receipts.received_date', [$startDate->toDateString(), $endDate->toDateString()]);
+        }
+
+        $stockUsages = $stockUsagesQuery->latest()->get();
+        $stockReceipts = $stockReceiptsQuery
+            ->latest('clinic_stock_receipts.received_date')
+            ->latest('clinic_stock_receipts.id')
+            ->get();
+        $diseaseUsageGroups = $this->groupClinicUsagesByDisease($stockUsages);
+        $diseaseBreakdown = $this->summarizeClinicDiseaseBreakdown($stockUsages);
+
+        $fileName = 'clinic-stock-report-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($stockReceipts, $diseaseUsageGroups, $diseaseBreakdown, $reportLabel) {
+            $handle = fopen('php://output', 'w');
+
+            fputcsv($handle, ['Report Period', $reportLabel]);
+            fputcsv($handle, []);
+            fputcsv($handle, ['Disease Category Summary']);
+            fputcsv($handle, ['Disease', 'Cases', 'Quantity Used', 'Medicines Used', 'Latest Date']);
+
+            if ($diseaseBreakdown->isEmpty()) {
+                fputcsv($handle, ['No disease categories recorded for this report period.']);
+            } else {
+                foreach ($diseaseBreakdown as $disease) {
+                    fputcsv($handle, [
+                        $disease['label'],
+                        $disease['case_count'],
+                        $disease['quantity_issued'],
+                        implode(', ', $disease['medicine_names']),
+                        $disease['latest_used_at']?->format('Y-m-d') ?? '',
+                    ]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Stock Received Report']);
+            fputcsv($handle, ['Medicine', 'Quantity Received', 'Date Received']);
+
+            foreach ($stockReceipts as $receipt) {
+                fputcsv($handle, [
+                    $receipt->stock_medicine_name ?? 'Unknown',
+                    $receipt->quantity_received,
+                    optional($receipt->received_date)->format('Y-m-d') ?? optional($receipt->created_at)->format('Y-m-d') ?? '',
+                ]);
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Stock Used by Disease']);
+
+            if ($diseaseUsageGroups->isEmpty()) {
+                fputcsv($handle, ['No stock usage records exist for the selected period.']);
+            } else {
+                foreach ($diseaseUsageGroups as $diseaseGroup) {
+                    fputcsv($handle, [
+                        'Disease',
+                        $diseaseGroup['label'],
+                        'Cases',
+                        $diseaseGroup['case_count'],
+                        'Quantity Used',
+                        $diseaseGroup['quantity_issued'],
+                    ]);
+                    fputcsv($handle, [
+                        'Medicines Used',
+                        implode(', ', $diseaseGroup['medicine_names']),
+                        'Latest Date',
+                        $diseaseGroup['latest_used_at']?->format('Y-m-d') ?? '',
+                    ]);
+                    fputcsv($handle, ['Medicine', 'Student ID', 'Quantity Used', 'Date Used']);
+
+                    foreach ($diseaseGroup['usages'] as $usage) {
+                        fputcsv($handle, [
+                            optional($usage->stockItem)->medicine_name ?? 'Unknown',
+                            $usage->student_id,
+                            $usage->quantity_issued,
+                            optional($usage->usage_date)->format('Y-m-d') ?? optional($usage->created_at)->format('Y-m-d') ?? '',
+                        ]);
+                    }
+
+                    fputcsv($handle, []);
+                }
+            }
+
+            fclose($handle);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function downloadCounsellingReport(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canManageCounselling($user)) {
+            return redirect()->route('counselling')->with('error', 'Only psychologists can download counselling reports.');
+        }
+
+        [
+            'reportType' => $reportType,
+            'reportYear' => $reportYear,
+            'reportMonth' => $reportMonth,
+            'reportSemester' => $reportSemester,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'reportLabel' => $reportLabel,
+        ] = $this->reportFiltersFromRequest($request);
+
+        $reportBookings = $this->counsellingReportQuery($reportType, $startDate, $endDate)
+            ->with('user')
+            ->latest()
+            ->get();
+
+        $statusSummary = $reportBookings->countBy(fn (CounsellingBooking $booking) => $this->normalizeCounsellingStatus($booking->status));
+        $attendedBookings = $reportBookings
+            ->filter(fn (CounsellingBooking $booking) => $this->normalizeCounsellingStatus($booking->status) === 'attended')
+            ->sortByDesc(fn (CounsellingBooking $booking) => optional($booking->appointment_date ?? $booking->updated_at ?? $booking->created_at)->timestamp ?? 0)
+            ->values();
+        $pendingBookings = $reportBookings
+            ->filter(fn (CounsellingBooking $booking) => $this->normalizeCounsellingStatus($booking->status) === 'pending')
+            ->sortBy(fn (CounsellingBooking $booking) => optional($booking->preferred_date ?? $booking->created_at)->timestamp ?? PHP_INT_MAX)
+            ->values();
+
+        $fileName = 'counselling-report-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use (
+            $attendedBookings,
+            $pendingBookings,
+            $reportBookings,
+            $reportLabel,
+            $statusSummary,
+            $user
+        ) {
+            $handle = fopen('php://output', 'w');
+
+            fputcsv($handle, ['Report Period', $reportLabel]);
+            fputcsv($handle, ['Generated By', $user->name ?: 'Psychologist']);
+            fputcsv($handle, ['Generated At', now()->format('Y-m-d H:i:s')]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Summary']);
+            fputcsv($handle, ['Total Requests', $reportBookings->count()]);
+            fputcsv($handle, ['Pending Sessions', $statusSummary->get('pending', 0)]);
+            fputcsv($handle, ['Scheduled Sessions', $statusSummary->get('scheduled', 0)]);
+            fputcsv($handle, ['Students Who Have Gone For Counselling', $statusSummary->get('attended', 0)]);
+            fputcsv($handle, ['Cancelled Sessions', $statusSummary->get('cancelled', 0)]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Students Who Have Gone For Counselling']);
+            fputcsv($handle, ['Student Name', 'Identity Number', 'Programme', 'Year of Study', 'Session Date', 'Requested On', 'Counsellor Notes']);
+
+            if ($attendedBookings->isEmpty()) {
+                fputcsv($handle, ['No attended counselling sessions found for this report period.']);
+            } else {
+                foreach ($attendedBookings as $booking) {
+                    fputcsv($handle, [
+                        $booking->student_name,
+                        $booking->student_identity_number ?: '-',
+                        $booking->programme ?: '-',
+                        $booking->year_of_study ?: '-',
+                        $booking->appointment_date?->format('Y-m-d H:i') ?: '-',
+                        $booking->created_at?->format('Y-m-d H:i') ?: '-',
+                        $this->flattenCsvCell($booking->counsellor_notes) ?: '-',
+                    ]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Pending Sessions']);
+            fputcsv($handle, ['Student Name', 'Identity Number', 'Programme', 'Year of Study', 'Preferred Session', 'Requested On', 'Reason']);
+
+            if ($pendingBookings->isEmpty()) {
+                fputcsv($handle, ['No pending counselling sessions found for this report period.']);
+            } else {
+                foreach ($pendingBookings as $booking) {
+                    $preferredSession = trim(implode(' ', array_filter([
+                        $booking->preferred_date?->format('Y-m-d'),
+                        $booking->preferred_time ? 'at ' . $booking->preferred_time : null,
+                    ])));
+
+                    fputcsv($handle, [
+                        $booking->student_name,
+                        $booking->student_identity_number ?: '-',
+                        $booking->programme ?: '-',
+                        $booking->year_of_study ?: '-',
+                        $preferredSession !== '' ? $preferredSession : '-',
+                        $booking->created_at?->format('Y-m-d H:i') ?: '-',
+                        $this->flattenCsvCell($booking->reason) ?: '-',
+                    ]);
+                }
+            }
+
+            fclose($handle);
+        }, $fileName, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function logout(Request $request)
+    {
+        if (Auth::guard('web')->check()) {
+            Auth::guard('web')->logout();
+        }
+
+        if (Auth::guard('admin')->check()) {
+            Auth::guard('admin')->logout();
+        }
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login');
+    }
+
+    protected function sendAccommodationStatusEmail(AccommodationApplication $application): array
+    {
+        $application->loadMissing(['room', 'user']);
+
+        $recipients = $this->accommodationStatusRecipients($application);
+        $statusLabel = Str::headline($application->status);
+
+        if ($recipients === []) {
+            return [
+                'success' => false,
+                'message' => 'Accommodation status updated to ' . $statusLabel . ', but no email address was found for the student.',
+            ];
+        }
+
+        $submittedRecipients = [];
+        $failedRecipients = [];
+        $messageIds = [];
+
+        foreach ($recipients as $recipient) {
+            try {
+                $sentMessage = Mail::to($recipient)->send(new AccommodationStatusUpdated($application));
+
+                $submittedRecipients[] = $recipient;
+
+                if ($sentMessage?->getMessageId()) {
+                    $messageIds[] = $sentMessage->getMessageId();
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+                $failedRecipients[] = $recipient;
+            }
+        }
+
+        Log::info('Accommodation status email processed.', [
+            'application_id' => $application->id,
+            'status' => $application->status,
+            'mailer' => config('mail.default'),
+            'submitted_recipients' => $submittedRecipients,
+            'failed_recipients' => $failedRecipients,
+            'message_ids' => $messageIds,
+        ]);
+
+        if ($submittedRecipients === []) {
+            return [
+                'success' => false,
+                'message' => 'Accommodation status updated to ' . $statusLabel . ', but the email could not be handed off to the mail service for ' . $this->formatEmailRecipientList($recipients) . '.',
+            ];
+        }
+
+        $message = 'Accommodation status updated to ' . $statusLabel . '. Email handoff completed for ' . $this->formatEmailRecipientList($submittedRecipients) . '. This does not confirm inbox delivery.';
+
+        if ($messageIds !== []) {
+            $message .= ' Reference ID ' . (count($messageIds) === 1 ? 'is ' : 's are ') . $this->formatEmailRecipientList($messageIds) . '.';
+        }
+
+        if ($failedRecipients !== []) {
+            $message .= ' Delivery attempt failed for ' . $this->formatEmailRecipientList($failedRecipients) . '.';
+        }
+
+        return [
+            'success' => $failedRecipients === [],
+            'message' => $message,
+        ];
+    }
+
+    protected function accommodationStatusRecipients(AccommodationApplication $application): array
+    {
+        $recipients = [];
+
+        foreach ([$application->email, optional($application->user)->email] as $email) {
+            $email = is_string($email) ? trim($email) : '';
+
+            if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            $recipients[Str::lower($email)] = $email;
+        }
+
+        return array_values($recipients);
+    }
+
+    protected function formatEmailRecipientList(array $recipients): string
+    {
+        $recipients = array_values($recipients);
+        $count = count($recipients);
+
+        if ($count === 0) {
+            return 'no recipients';
+        }
+
+        if ($count === 1) {
+            return $recipients[0];
+        }
+
+        if ($count === 2) {
+            return $recipients[0] . ' and ' . $recipients[1];
+        }
+
+        $lastRecipient = array_pop($recipients);
+
+        return implode(', ', $recipients) . ', and ' . $lastRecipient;
+    }
+
+    protected function occupyingAccommodationStatuses(): array
+    {
+        return ['admitted', 'checkout_requested', 'checkout_rejected'];
+    }
+
+    protected function checkoutEligibleStatuses(): array
+    {
+        return ['admitted', 'checkout_rejected'];
+    }
+
+    protected function findExistingAccommodationApplication(User $user, ?string $nationalId = null): ?AccommodationApplication
+    {
+        return AccommodationApplication::query()
+            ->where(function ($query) use ($user, $nationalId) {
+                $query->where('user_id', $user->id);
+
+                if (filled($nationalId)) {
+                    $query->orWhere('national_id', $nationalId);
+                }
+            })
+            ->latest('updated_at')
+            ->latest('id')
+            ->first();
+    }
+
+    protected function duplicateAccommodationApplicationMessage(AccommodationApplication $application, User $user): string
+    {
+        return $application->user_id === $user->id
+            ? 'You already have an accommodation application on file.'
+            : 'An accommodation application already exists for this national ID.';
+    }
+
+    protected function normalizeNationalId(mixed $nationalId): ?string
+    {
+        if (! is_string($nationalId)) {
+            return null;
+        }
+
+        $nationalId = Str::upper(trim($nationalId));
+
+        return $nationalId !== '' ? $nationalId : null;
+    }
+
+    protected function formatAccommodationRoomLabel(?AccommodationRoom $room): ?string
+    {
+        if (! $room) {
+            return null;
+        }
+
+        return $room->block_name . '-' . str_pad((string) $room->room_number, 2, '0', STR_PAD_LEFT);
+    }
+
+    protected function resolveAccommodationReportIntake(?string $requestedIntake = null, $availableIntakes = null): ?string
+    {
+        $availableIntakes = $availableIntakes ?? $this->availableAccommodationReportIntakes();
+        $requestedIntake = is_string($requestedIntake) ? trim($requestedIntake) : '';
+
+        if ($availableIntakes->isEmpty()) {
+            return null;
+        }
+
+        if ($requestedIntake !== '' && $availableIntakes->contains($requestedIntake)) {
+            return $requestedIntake;
+        }
+
+        return $availableIntakes->first();
+    }
+
+    protected function availableAccommodationReportIntakes()
+    {
+        $recentIntakes = AccommodationApplication::query()
+            ->whereNotNull('intake')
+            ->latest('updated_at')
+            ->latest('id')
+            ->pluck('intake')
+            ->map(fn ($intake) => is_string($intake) ? trim($intake) : '')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $currentIntake = $recentIntakes->first();
+
+        if (! $currentIntake) {
+            return collect();
+        }
+
+        $currentIntakeYear = $this->extractAccommodationIntakeYear($currentIntake) ?? now()->year;
+
+        return $recentIntakes
+            ->filter(function (string $intake) use ($currentIntake, $currentIntakeYear) {
+                if ($intake === $currentIntake) {
+                    return true;
+                }
+
+                $intakeYear = $this->extractAccommodationIntakeYear($intake);
+
+                return $intakeYear !== null
+                    && $intakeYear >= ($currentIntakeYear - 3)
+                    && $intakeYear <= $currentIntakeYear;
+            })
+            ->values();
+    }
+
+    protected function availableAccommodationReportYears($availableIntakes = null)
+    {
+        $availableIntakes = $availableIntakes ?? $this->availableAccommodationReportIntakes();
+
+        return $availableIntakes
+            ->map(fn (string $intake) => $this->extractAccommodationIntakeYear($intake))
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    protected function resolveAccommodationReportYear(?string $requestedYear = null, $availableYears = null): ?int
+    {
+        $availableYears = $availableYears ?? $this->availableAccommodationReportYears();
+        $requestedYear = is_string($requestedYear) ? trim($requestedYear) : '';
+
+        if ($availableYears->isEmpty()) {
+            return null;
+        }
+
+        if ($requestedYear !== '' && $availableYears->contains((int) $requestedYear)) {
+            return (int) $requestedYear;
+        }
+
+        return $availableYears->first();
+    }
+
+    protected function extractAccommodationIntakeYear(?string $intake): ?int
+    {
+        if (! is_string($intake) || trim($intake) === '') {
+            return null;
+        }
+
+        if (! preg_match('/\b((?:19|20)\d{2})\b/', $intake, $matches)) {
+            return null;
+        }
+
+        return (int) $matches[1];
+    }
+
+    protected function buildAccommodationReportData(?string $requestedIntake = null, ?string $requestedYear = null): array
+    {
+        $allAvailableIntakes = $this->availableAccommodationReportIntakes();
+        $availableYears = $this->availableAccommodationReportYears($allAvailableIntakes);
+        $selectedYear = $this->resolveAccommodationReportYear($requestedYear, $availableYears);
+
+        $availableIntakes = $selectedYear
+            ? $allAvailableIntakes
+                ->filter(fn (string $intake) => $this->extractAccommodationIntakeYear($intake) === $selectedYear)
+                ->values()
+            : collect();
+
+        $currentIntake = $this->resolveAccommodationReportIntake($requestedIntake, $availableIntakes);
+
+        $applications = $availableIntakes->isNotEmpty()
+            ? AccommodationApplication::with(['user', 'room'])
+                ->whereIn('intake', $availableIntakes->all())
+                ->latest('updated_at')
+                ->latest('id')
+                ->get()
+            : collect();
+
+        $intakeOccupancyByRoom = $applications
+            ->whereIn('status', $this->occupyingAccommodationStatuses())
+            ->filter(fn ($application) => filled($application->accommodation_room_id))
+            ->countBy('accommodation_room_id');
+
+        $rooms = AccommodationRoom::query()
+            ->orderBy('block_name')
+            ->orderBy('room_number')
+            ->get();
+
+        $rooms->transform(function (AccommodationRoom $room) use ($intakeOccupancyByRoom) {
+            $room->occupied_beds = (int) ($intakeOccupancyByRoom[$room->id] ?? 0);
+
+            return $room;
+        });
+
+        $pendingApplications = $applications
+            ->where('status', 'pending')
+            ->values();
+
+        $checkoutRequests = $applications
+            ->where('status', 'checkout_requested')
+            ->values();
+
+        $activeResidents = $applications
+            ->whereIn('status', $this->occupyingAccommodationStatuses())
+            ->values();
+
+        $statusSummary = $applications
+            ->countBy(fn ($application) => Str::headline($application->status))
+            ->sortKeys();
+
+        $availableRooms = $rooms
+            ->filter(fn (AccommodationRoom $room) => $room->occupied_beds < $room->capacity)
+            ->values();
+
+        $occupiedRoomsCount = $rooms
+            ->filter(fn (AccommodationRoom $room) => $room->occupied_beds > 0)
+            ->count();
+
+        $occupiedBedsCount = $rooms->sum('occupied_beds');
+        $totalCapacity = $rooms->sum('capacity');
+
+        return [
+            'currentIntake' => $currentIntake,
+            'selectedYear' => $selectedYear,
+            'availableIntakes' => $availableIntakes,
+            'availableYears' => $availableYears,
+            'applications' => $applications,
+            'pendingApplications' => $pendingApplications,
+            'checkoutRequests' => $checkoutRequests,
+            'activeResidents' => $activeResidents,
+            'statusSummary' => $statusSummary,
+            'rooms' => $rooms,
+            'availableRooms' => $availableRooms,
+            'availableRoomsCount' => $availableRooms->count(),
+            'occupiedRoomsCount' => $occupiedRoomsCount,
+            'occupiedBedsCount' => $occupiedBedsCount,
+            'availableBedsCount' => max(0, $totalCapacity - $occupiedBedsCount),
+            'totalCapacity' => $totalCapacity,
+        ];
+    }
+
+    protected function accommodationApplicationFee(): float
+    {
+        return 105.00;
+    }
+
+    protected function renderClinicPage(User $user, Request $request)
+    {
+        $this->ensureDefaultClinicStockExists();
+        $reportGenerated = $request->boolean('report_generated') || $request->query->has('report_type');
+
+        [
+            'reportType' => $reportType,
+            'reportYear' => $reportYear,
+            'reportMonth' => $reportMonth,
+            'reportSemester' => $reportSemester,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'reportLabel' => $reportLabel,
+        ] = $this->reportFiltersFromRequest($request);
+
+        $stockItems = ClinicStockItem::with([
+                'confirmer',
+                'comments.user',
+                'comments.replies.user',
+            ])
+            ->orderBy('medicine_name')
+            ->get();
+
+        $stockUsagesQuery = ClinicStockUsage::with(['stockItem']);
+        $stockReceiptsQuery = ClinicStockReceipt::query()
+            ->join('clinic_stock_items', 'clinic_stock_receipts.clinic_stock_item_id', '=', 'clinic_stock_items.id')
+            ->select('clinic_stock_receipts.*', 'clinic_stock_items.medicine_name as stock_medicine_name');
+
+        if ($reportType !== 'general') {
+            $stockUsagesQuery->whereBetween('usage_date', [$startDate->toDateString(), $endDate->toDateString()]);
+            $stockReceiptsQuery->whereBetween('clinic_stock_receipts.received_date', [$startDate->toDateString(), $endDate->toDateString()]);
+        }
+
+        $stockUsages = $stockUsagesQuery
+            ->latest()
+            ->get();
+
+        $stockReceipts = $stockReceiptsQuery
+            ->latest('clinic_stock_receipts.received_date')
+            ->latest('clinic_stock_receipts.id')
+            ->get();
+        $diseaseUsageGroups = $this->groupClinicUsagesByDisease($stockUsages);
+        $diseaseBreakdown = $this->summarizeClinicDiseaseBreakdown($stockUsages);
+
+        return view('clinic.executive', compact(
+            'user',
+            'stockItems',
+            'stockUsages',
+            'stockReceipts',
+            'diseaseUsageGroups',
+            'diseaseBreakdown',
+            'reportGenerated',
+            'reportType',
+            'reportYear',
+            'reportMonth',
+            'reportSemester',
+            'reportLabel'
+        ));
+    }
+
+    protected function ensureDefaultClinicStockExists(): void
+    {
+        if (ClinicStockItem::exists()) {
+            return;
+        }
+
+        foreach ([
+            ['medicine_name' => 'Medicine 0', 'opening_stock' => 0, 'quantity_received' => 0, 'quantity_issued' => 0, 'status' => 'out_of_stock'],
+            ['medicine_name' => 'Paracetamol', 'opening_stock' => 120, 'quantity_received' => 30, 'quantity_issued' => 40, 'status' => 'in_stock'],
+            ['medicine_name' => 'Amoxicillin', 'opening_stock' => 50, 'quantity_received' => 0, 'quantity_issued' => 22, 'status' => 'low_stock'],
+        ] as $stockItem) {
+            ClinicStockItem::create($stockItem);
+        }
+    }
+
+    protected function resolveClinicStockStatus(int $balance): string
+    {
+        if ($balance >= 40) {
+            return 'in_stock';
+        }
+
+        if ($balance < 30) {
+            return 'low_stock';
+        }
+
+        return 'out_of_stock';
+    }
+
+    protected function syncClinicStockItemIssued(ClinicStockItem $item, int $quantityIssued): void
+    {
+        $safeIssued = max(0, $quantityIssued);
+
+        $item->update([
+            'quantity_issued' => $safeIssued,
+            'status' => $this->resolveClinicStockStatus(
+                $item->opening_stock + $item->quantity_received - $safeIssued
+            ),
+        ]);
+    }
+
+    protected function recordClinicStockReceipt(ClinicStockItem $item, User $user, int $quantityReceived): void
+    {
+        if ($quantityReceived <= 0) {
+            return;
+        }
+
+        ClinicStockReceipt::create([
+            'clinic_stock_item_id' => $item->id,
+            'user_id' => $user->id,
+            'quantity_received' => $quantityReceived,
+            'received_date' => now()->toDateString(),
+        ]);
+    }
+
+    protected function canAccessStudentCounselling(User $user): bool
+    {
+        return $user->role === 'student' && $user->student_type === 'continuing';
+    }
+
+    protected function nationalIdAlreadyRegistered(mixed $nationalId): bool
+    {
+        $normalizedNationalId = $this->normalizeNationalId($nationalId);
+
+        if (! $normalizedNationalId) {
+            return false;
+        }
+
+        $needle = Str::lower($normalizedNationalId);
+
+        return User::query()
+            ->whereNotNull('id_number')
+            ->whereRaw('LOWER(TRIM(id_number)) = ?', [$needle])
+            ->exists()
+            || Student::query()
+                ->whereNotNull('id_number')
+                ->whereRaw('LOWER(TRIM(id_number)) = ?', [$needle])
+                ->exists();
+    }
+
+    protected function emailAlreadyRegistered(mixed $email): bool
+    {
+        if (! is_string($email)) {
+            return false;
+        }
+
+        $normalizedEmail = $this->normalizeLoginIdentifier($email);
+
+        if (! filled($normalizedEmail)) {
+            return false;
+        }
+
+        return User::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
+            ->exists()
+            || Admin::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
+                ->exists();
+    }
+
+    protected function canAccessClinic(User $user): bool
+    {
+        return in_array($user->role, ['executive', 'ssd_assistant_1', 'ssd_assistant_2', 'senior_nurse_officer'], true);
+    }
+
+    protected function canGenerateClinicReport(User $user): bool
+    {
+        return in_array($user->role, ['executive', 'senior_nurse_officer'], true);
+    }
+
+    protected function canManageCounselling(User $user): bool
+    {
+        return $user->role === 'psychologist';
+    }
+
+    protected function normalizeCounsellingStatus(?string $status): string
+    {
+        return match (strtolower((string) $status)) {
+            'approved' => 'scheduled',
+            'completed' => 'attended',
+            default => strtolower((string) $status),
+        };
+    }
+
+    protected function counsellingBookingStatuses(): array
+    {
+        return ['pending', 'scheduled', 'attended', 'cancelled'];
+    }
+
+    protected function extractEmergencyCounsellingReply(array $response): ?string
+    {
+        $outputText = $response['output_text'] ?? null;
+        if (is_string($outputText) && trim($outputText) !== '') {
+            return trim($outputText);
+        }
+
+        $texts = [];
+
+        foreach ($response['output'] ?? [] as $outputItem) {
+            if (($outputItem['type'] ?? null) !== 'message') {
+                continue;
+            }
+
+            foreach ($outputItem['content'] ?? [] as $contentItem) {
+                if (($contentItem['type'] ?? null) === 'output_text' && is_string($contentItem['text'] ?? null)) {
+                    $texts[] = trim($contentItem['text']);
+                }
+            }
+        }
+
+        $reply = trim(implode("\n\n", array_filter($texts)));
+
+        return $reply !== '' ? $reply : null;
+    }
+
+    protected function reportFiltersFromRequest(Request $request): array
+    {
+        $reportType = in_array($request->query('report_type'), ['general', 'semester', 'month', 'year'], true)
+            ? $request->query('report_type')
+            : 'general';
+        $reportYear = (int) ($request->query('report_year', now()->year));
+        $reportYear = $reportYear >= 2000 && $reportYear <= 2100 ? $reportYear : (int) now()->year;
+        $reportMonth = (int) ($request->query('report_month', now()->month));
+        $reportMonth = $reportMonth >= 1 && $reportMonth <= 12 ? $reportMonth : (int) now()->month;
+        $reportSemester = (int) ($request->query('report_semester', 1));
+        $reportSemester = in_array($reportSemester, [1, 2], true) ? $reportSemester : 1;
+
+        [$startDate, $endDate, $reportLabel] = $this->resolveReportDateRange(
+            $reportType,
+            $reportYear,
+            $reportMonth,
+            $reportSemester
+        );
+
+        return compact(
+            'reportType',
+            'reportYear',
+            'reportMonth',
+            'reportSemester',
+            'startDate',
+            'endDate',
+            'reportLabel'
+        );
+    }
+
+    protected function resolveReportDateRange(
+        string $reportType,
+        int $reportYear,
+        int $reportMonth,
+        int $reportSemester
+    ): array {
+        if ($reportType === 'general') {
+            $startDate = Carbon::create(2000, 1, 1)->startOfDay();
+            $endDate = Carbon::create(2100, 12, 31)->endOfDay();
+
+            return [$startDate, $endDate, 'General Report (All Records)'];
+        }
+
+        if ($reportType === 'year') {
+            $startDate = Carbon::create($reportYear, 1, 1)->startOfDay();
+            $endDate = Carbon::create($reportYear, 12, 31)->endOfDay();
+
+            return [$startDate, $endDate, 'Year ' . $reportYear];
+        }
+
+        if ($reportType === 'month') {
+            $startDate = Carbon::create($reportYear, $reportMonth, 1)->startOfDay();
+            $endDate = (clone $startDate)->endOfMonth()->endOfDay();
+
+            return [$startDate, $endDate, $startDate->format('F Y')];
+        }
+
+        $startMonth = $reportSemester === 1 ? 8 : 1;
+        $endMonth = $reportSemester === 1 ? 12 : 5;
+        $startDate = Carbon::create($reportYear, $startMonth, 1)->startOfDay();
+        $endDate = Carbon::create($reportYear, $endMonth, 1)->endOfMonth()->endOfDay();
+
+        return [$startDate, $endDate, 'Semester ' . $reportSemester . ' (' . $reportYear . ')'];
+    }
+
+    protected function counsellingReportQuery(string $reportType, Carbon $startDate, Carbon $endDate)
+    {
+        return CounsellingBooking::query()
+            ->when($reportType !== 'general', function ($query) use ($startDate, $endDate) {
+                $query->where(function ($reportQuery) use ($startDate, $endDate) {
+                    $reportQuery
+                        ->whereBetween('created_at', [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()])
+                        ->orWhereBetween('appointment_date', [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()]);
+                });
+            });
+    }
+
+    protected function flattenCsvCell(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = preg_replace('/\s+/', ' ', trim($value));
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    protected function groupClinicUsagesByDisease($stockUsages): \Illuminate\Support\Collection
+    {
+        return $stockUsages
+            ->groupBy(fn ($usage) => $this->clinicDiagnosisKey($usage->diagnosis))
+            ->map(function ($rows) {
+                $sortedRows = $rows
+                    ->sortByDesc(fn ($usage) => $this->clinicUsageMoment($usage)?->timestamp ?? 0)
+                    ->values();
+                $sample = $sortedRows->first();
+                $label = $this->clinicDiagnosisLabel($sample?->diagnosis);
+                $medicineNames = $sortedRows
+                    ->map(fn ($usage) => optional($usage->stockItem)->medicine_name)
+                    ->filter(fn ($name) => is_string($name) && trim($name) !== '')
+                    ->map(fn ($name) => trim($name))
+                    ->unique()
+                    ->values();
+                $latestUsedAt = $sortedRows
+                    ->map(fn ($usage) => $this->clinicUsageMoment($usage))
+                    ->filter()
+                    ->first();
+
+                return [
+                    'label' => $label,
+                    'case_count' => (int) $sortedRows->count(),
+                    'quantity_issued' => (int) $sortedRows->sum('quantity_issued'),
+                    'medicine_names' => $medicineNames->all(),
+                    'latest_used_at' => $latestUsedAt,
+                    'usages' => $sortedRows,
+                ];
+            })
+            ->sort(function (array $left, array $right) {
+                $caseComparison = $right['case_count'] <=> $left['case_count'];
+
+                if ($caseComparison !== 0) {
+                    return $caseComparison;
+                }
+
+                $quantityComparison = $right['quantity_issued'] <=> $left['quantity_issued'];
+
+                if ($quantityComparison !== 0) {
+                    return $quantityComparison;
+                }
+
+                return strcmp($left['label'], $right['label']);
+            })
+            ->values();
+    }
+
+    protected function summarizeClinicDiseaseBreakdown($stockUsages): \Illuminate\Support\Collection
+    {
+        return $this->groupClinicUsagesByDisease($stockUsages)
+            ->map(fn (array $group) => [
+                'label' => $group['label'],
+                'case_count' => $group['case_count'],
+                'quantity_issued' => $group['quantity_issued'],
+                'medicine_names' => $group['medicine_names'],
+                'latest_used_at' => $group['latest_used_at'],
+            ])
+            ->values();
+    }
+
+    protected function clinicUsageMoment(ClinicStockUsage $usage): ?Carbon
+    {
+        return Carbon::make($usage->usage_date ?? $usage->created_at);
+    }
+
+    protected function clinicDiagnosisKey(mixed $diagnosis): string
+    {
+        $label = $this->clinicDiagnosisLabel($diagnosis);
+
+        return $label === 'Unspecified Diagnosis'
+            ? '__unspecified__'
+            : Str::lower($label);
+    }
+
+    protected function clinicDiagnosisLabel(mixed $diagnosis): string
+    {
+        if (! is_string($diagnosis)) {
+            return 'Unspecified Diagnosis';
+        }
+
+        $diagnosis = trim(Str::squish($diagnosis));
+
+        return $diagnosis !== '' ? $diagnosis : 'Unspecified Diagnosis';
+    }
+}

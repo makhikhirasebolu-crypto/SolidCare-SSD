@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ClinicStockUsage extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'clinic_stock_item_id',
+        'user_id',
+        'student_id',
+        'quantity_issued',
+        'diagnosis',
+        'usage_date',
+    ];
+
+    protected $casts = [
+        'quantity_issued' => 'integer',
+        'usage_date' => 'date',
+    ];
+
+    public function stockItem()
+    {
+        return $this->belongsTo(ClinicStockItem::class, 'clinic_stock_item_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
