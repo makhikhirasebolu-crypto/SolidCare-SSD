@@ -14,30 +14,31 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
-# Install dependencies
+# Install Laravel dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Ensure Laravel folders exist
-RUN mkdir -p storage bootstrap/cache
+# Create .env file from example
+RUN cp .env.example .env
 
-# Set permissions
-RUN chmod -R 775 storage bootstrap/cache
+# Generate application key (won’t crash if already exists)
+RUN php artisan key:generate || true
 
-# Clear and cache config properly
+# Clear caches to avoid config issues
 RUN php artisan config:clear || true
 RUN php artisan cache:clear || true
 
-# Generate app key safely
-RUN php artisan key:generate || true
+# Ensure required folders exist and set permissions
+RUN mkdir -p storage bootstrap/cache
+RUN chmod -R 775 storage bootstrap/cache
 
-# Run migrations (safe for production)
+# Run migrations safely (won’t crash if DB not ready)
 RUN php artisan migrate --force || true
 
 # Cache config for performance
 RUN php artisan config:cache
 
-# Expose port
+# Expose Render port
 EXPOSE 10000
 
-# Start Laravel
+# Start Laravel app
 CMD php artisan serve --host=0.0.0.0 --port=10000
