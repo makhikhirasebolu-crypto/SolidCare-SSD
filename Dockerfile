@@ -1,6 +1,8 @@
 FROM php:8.2-cli
 
 # Install system dependencies
+FROM php:8.2-cli
+
 RUN apt-get update && apt-get install -y \
     unzip curl git libzip-dev libpq-dev \
     && docker-php-ext-install zip pdo pdo_pgsql
