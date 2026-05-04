@@ -108,6 +108,13 @@ class LoginTest extends TestCase
 
     public function test_registration_logs_in_the_student_and_redirects_home(): void
     {
+        User::create([
+            'name' => 'Pending Student',
+            'email' => 'lehananthati@gmail.com',
+            'password' => 'temporary123',
+            'role' => 'student',
+        ]);
+
         $response = $this->post('/register', [
             'name' => 'Nthati Lehana',
             'email' => '  LehanaNthati@Gmail.com  ',
@@ -135,6 +142,53 @@ class LoginTest extends TestCase
         $response->assertSessionHas('status', 'Account created successfully. Welcome to SolidCare SSD.');
     }
 
+    public function test_registration_is_denied_when_email_was_not_approved_by_admin(): void
+    {
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Nthati Lehana',
+            'email' => 'lehananthati@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors([
+            'email' => 'This email address is not approved for student registration. Contact the administrator.',
+        ]);
+
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('students', 0);
+        $this->assertGuest();
+    }
+
+    public function test_admin_can_approve_a_student_email_for_registration(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->post(route('admin.users.store'), [
+            'name' => 'Pending Student',
+            'email' => '  Student@Example.com  ',
+            'role' => 'student',
+        ]);
+
+        $response->assertRedirect(route('admin.users.create'));
+        $response->assertSessionHas('success', 'Student email approved successfully. The student can now complete registration using this email address.');
+
+        $this->assertDatabaseHas('users', [
+            'name' => 'Pending Student',
+            'email' => 'student@example.com',
+            'role' => 'student',
+            'student_type' => null,
+        ]);
+    }
+
     public function test_new_student_registration_is_denied_when_national_id_already_exists(): void
     {
         $existingUser = User::create([
@@ -154,6 +208,13 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
+        User::create([
+            'name' => 'Approved New Student',
+            'email' => 'another.student@gmail.com',
+            'password' => 'temporary123',
+            'role' => 'student',
+        ]);
+
         $response = $this->from(route('register'))->post('/register', [
             'name' => 'Another Student',
             'email' => 'another.student@gmail.com',
@@ -169,7 +230,7 @@ class LoginTest extends TestCase
             'id_number' => 'This national ID is already registered.',
         ]);
 
-        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('users', 2);
         $this->assertDatabaseCount('students', 1);
         $this->assertGuest();
     }

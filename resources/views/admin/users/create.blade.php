@@ -29,7 +29,14 @@
         function toggleRoleFields() {
             const role = document.getElementById('role').value;
             const yearLeaderSection = document.getElementById('yearleader-fields');
+            const passwordSection = document.getElementById('password-fields');
+            const password = document.getElementById('password');
+            const passwordConfirmation = document.getElementById('password_confirmation');
+
             yearLeaderSection.style.display = role === 'yearleader' ? 'block' : 'none';
+            passwordSection.style.display = role === 'student' ? 'none' : 'block';
+            password.required = role !== 'student';
+            passwordConfirmation.required = role !== 'student';
         }
 
         window.addEventListener('DOMContentLoaded', function () {
@@ -43,7 +50,7 @@
         <div class="topbar">
             <div>
                 <h1>Create User</h1>
-                <p>Add new users and assign their role with a temporary password valid for two days.</p>
+                <p>Add staff users, or approve a student email so the student can complete registration.</p>
             </div>
             <a href="{{ route('dashboard') }}">Back to Dashboard</a>
         </div>
@@ -70,14 +77,17 @@
                 <label for="email">Email</label>
                 <input id="email" name="email" type="email" value="{{ old('email') }}" required>
 
-                <label for="password">Temporary Password</label>
-                <input id="password" name="password" type="password" required>
+                <div id="password-fields">
+                    <label for="password">Temporary Password</label>
+                    <input id="password" name="password" type="password" required>
 
-                <label for="password_confirmation">Confirm Password</label>
-                <input id="password_confirmation" name="password_confirmation" type="password" required>
+                    <label for="password_confirmation">Confirm Password</label>
+                    <input id="password_confirmation" name="password_confirmation" type="password" required>
+                </div>
 
                 <label for="role">Role</label>
                 <select id="role" name="role" required>
+                    <option value="student" {{ old('role') === 'student' ? 'selected' : '' }}>Student</option>
                     <option value="executive" {{ old('role') === 'executive' ? 'selected' : '' }}>Executive</option>
                     <option value="ssd_assistant_1" {{ old('role') === 'ssd_assistant_1' ? 'selected' : '' }}>SSD Assistant 1</option>
                     <option value="ssd_assistant_2" {{ old('role') === 'ssd_assistant_2' ? 'selected' : '' }}>SSD Assistant 2</option>

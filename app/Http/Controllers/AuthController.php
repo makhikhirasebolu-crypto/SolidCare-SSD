@@ -181,8 +181,15 @@ class AuthController extends Controller
                 'email',
                 'max:255',
                 function (string $attribute, mixed $value, \Closure $fail) {
-                    if ($this->emailAlreadyRegistered($value)) {
-                        $fail('This email address already exists in the system.');
+                    $existingStudent = $this->studentApprovedForRegistration($value);
+
+                    if (! $existingStudent) {
+                        $fail('This email address is not approved for student registration. Contact the administrator.');
+                        return;
+                    }
+
+                    if (Student::query()->where('user_id', $existingStudent->id)->exists()) {
+                        $fail('This email address is already registered.');
                     }
                 },
             ],
@@ -206,9 +213,18 @@ class AuthController extends Controller
 
         $data = $request->validate($rules);
 
-        $user = User::create([
+        $user = $this->studentApprovedForRegistration($data['email']);
+
+        if (! $user) {
+            return back()
+                ->withInput($request->except('password', 'password_confirmation'))
+                ->withErrors([
+                    'email' => 'This email address is not approved for student registration. Contact the administrator.',
+                ]);
+        }
+
+        $user->update([
             'name' => $data['name'],
-            'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => 'student',
             'student_type' => $data['student_type'],
@@ -216,6 +232,8 @@ class AuthController extends Controller
             'id_number' => $data['id_number'] ?? null,
             'disability' => $data['disability'],
             'disability_details' => $data['disability_details'] ?? null,
+            'password_temporary' => false,
+            'temporary_password_expires_at' => null,
         ]);
 
         Student::create([
@@ -231,6 +249,73 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         return redirect()->route('home')->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
+    }
+
+    public function showCreateUser()
+    {
+        if (! Auth::guard('admin')->check()) {
+            return redirect()->route('login');
+        }
+
+        return view('admin.users.create');
+    }
+
+    public function storeAdminUser(Request $request)
+    {
+        if (! Auth::guard('admin')->check()) {
+            return redirect()->route('login');
+        }
+
+        $request->merge([
+            'email' => $this->normalizeLoginIdentifier($request->input('email')),
+        ]);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($this->emailAlreadyRegistered($value)) {
+                        $fail('This email address already exists in the system.');
+                    }
+                },
+            ],
+            'password' => [Rule::requiredIf($request->input('role') !== 'student'), 'nullable', 'string', 'min:8', 'confirmed'],
+            'role' => ['required', 'in:student,executive,ssd_assistant_1,ssd_assistant_2,psychologist,senior_nurse_officer,warden,yearleader'],
+            'faculty' => ['required_if:role,yearleader', 'nullable', 'string', 'max:255'],
+            'class' => ['required_if:role,yearleader', 'nullable', 'string', 'max:100'],
+            'year' => ['required_if:role,yearleader', 'nullable', 'string', 'max:50'],
+        ]);
+
+        $temporaryPassword = $data['password'] ?? Str::random(16);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($temporaryPassword),
+            'role' => $data['role'],
+            'password_temporary' => $data['role'] !== 'student',
+            'temporary_password_expires_at' => $data['role'] !== 'student'
+                ? Carbon::now()->addDays(2)
+                : null,
+        ]);
+
+        if ($data['role'] === 'yearleader') {
+            YearLeader::create([
+                'user_id' => $user->id,
+                'faculty' => $data['faculty'],
+                'class' => $data['class'],
+                'year' => $data['year'],
+            ]);
+        }
+
+        $message = $data['role'] === 'student'
+            ? 'Student email approved successfully. The student can now complete registration using this email address.'
+            : 'User created successfully. Temporary password: ' . $temporaryPassword . ' (expires in 2 days).';
+
+        return redirect()->route('admin.users.create')->with('success', $message);
     }
 
     public function showTemporaryPasswordForm()
@@ -2518,6 +2603,24 @@ class AuthController extends Controller
             || Admin::query()
                 ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
                 ->exists();
+    }
+
+    protected function studentApprovedForRegistration(mixed $email): ?User
+    {
+        if (! is_string($email)) {
+            return null;
+        }
+
+        $normalizedEmail = $this->normalizeLoginIdentifier($email);
+
+        if (! filled($normalizedEmail)) {
+            return null;
+        }
+
+        return User::query()
+            ->where('role', 'student')
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
+            ->first();
     }
 
     protected function canAccessClinic(User $user): bool
