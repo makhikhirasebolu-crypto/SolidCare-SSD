@@ -13,10 +13,10 @@ from zipfile import ZipFile
 
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.svm import LinearSVC
 
 
 XML_NS = {
@@ -25,6 +25,8 @@ XML_NS = {
 }
 CELL_REF_PATTERN = re.compile(r"([A-Z]+)\d+")
 REQUIRED_COLUMNS = {"User_Input", "Intent", "Context", "AI_Response", "Next_Action"}
+MODEL_TYPE = "LogisticRegression"
+MODEL_SLUG = "logistic-regression"
 
 
 @dataclass(frozen=True)
@@ -214,7 +216,14 @@ def train_intent_model(samples: list[TrainingSample]) -> tuple[Pipeline, dict[st
                     sublinear_tf=True,
                 ),
             ),
-            ("classifier", LinearSVC()),
+            (
+                "classifier",
+                LogisticRegression(
+                    class_weight="balanced",
+                    max_iter=1000,
+                    random_state=42,
+                ),
+            ),
         ]
     )
     pipeline.fit(x_train, y_train)
@@ -222,7 +231,7 @@ def train_intent_model(samples: list[TrainingSample]) -> tuple[Pipeline, dict[st
     predictions = pipeline.predict(x_test)
     metrics = {
         "target": "Intent",
-        "model_type": "LinearSVC",
+        "model_type": MODEL_TYPE,
         "accuracy": accuracy_score(y_test, predictions),
         "train_size": len(x_train),
         "test_size": len(x_test),
@@ -247,13 +256,13 @@ def save_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    model_path = output_dir / f"counselling-intent-linear-svc-{timestamp}.joblib"
-    metrics_path = output_dir / f"counselling-intent-linear-svc-{timestamp}.metrics.json"
+    model_path = output_dir / f"counselling-intent-{MODEL_SLUG}-{timestamp}.joblib"
+    metrics_path = output_dir / f"counselling-intent-{MODEL_SLUG}-{timestamp}.metrics.json"
 
     artifact = {
         "model": model,
         "target": "Intent",
-        "model_type": "LinearSVC",
+        "model_type": MODEL_TYPE,
         "dataset_path": str(dataset_path),
         "trained_at_utc": timestamp,
     }
