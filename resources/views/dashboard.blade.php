@@ -210,6 +210,39 @@
                 font-size: clamp(1.05rem, 3vw, 1.5rem);
                 color: #f0b429;
             }
+            .hero-actions {
+                display: flex;
+                margin-top: 28px;
+            }
+            .btn-services-toggle {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                min-height: 44px;
+                padding: 11px 22px;
+                border: 1px solid rgba(240,180,41,0.42);
+                border-radius: 999px;
+                background: rgba(240,180,41,0.15);
+                color: #ffe8ac;
+                font-weight: 800;
+                font-size: 0.9rem;
+                cursor: pointer;
+                transition: background 0.2s, border-color 0.2s, transform 0.2s;
+            }
+            .btn-services-toggle:hover,
+            .btn-services-toggle:focus-visible {
+                background: rgba(240,180,41,0.24);
+                border-color: rgba(240,180,41,0.75);
+                outline: none;
+                transform: translateY(-1px);
+            }
+            .btn-services-toggle i {
+                transition: transform 0.25s;
+            }
+            body.services-open .btn-services-toggle i {
+                transform: rotate(180deg);
+            }
             .hero-illustration {
                 flex: 1 1 280px;
                 min-width: 180px;
@@ -295,6 +328,18 @@
             .flash-message.info { border-left-color: #3498db; background: rgba(52,152,219,0.12); color: #e3f0ff; }
 
             /* service cards - modern luxurious */
+            .services-section {
+                max-height: 0;
+                opacity: 0;
+                overflow: hidden;
+                transform: translateY(-14px);
+                transition: max-height 0.55s ease, opacity 0.35s ease, transform 0.45s ease;
+            }
+            body.services-open .services-section {
+                max-height: 2600px;
+                opacity: 1;
+                transform: translateY(0);
+            }
             .services-header {
                 display: flex;
                 justify-content: space-between;
@@ -553,6 +598,15 @@
                     font-size: 1rem;
                     line-height: 1.1;
                 }
+                .hero-actions {
+                    justify-content: center;
+                    margin-top: 22px;
+                }
+                .btn-services-toggle {
+                    width: 100%;
+                    padding-inline: 14px;
+                    font-size: 0.84rem;
+                }
                 .glass-card-illus {
                     padding: 20px 14px;
                     border-radius: 28px;
@@ -626,6 +680,10 @@
                 .stat-digit {
                     font-size: 0.92rem;
                 }
+                .btn-services-toggle {
+                    min-height: 42px;
+                    font-size: 0.78rem;
+                }
                 .glass-card-illus {
                     padding: 16px 10px;
                     border-radius: 22px;
@@ -687,6 +745,12 @@
                         <div class="stat-block"><span class="stat-digit"><i class="fas fa-chalkboard-user"></i> 4+</span> <span>Core Services</span></div>
                         <div class="stat-block"><span class="stat-digit"><i class="fas fa-arrow-trend-up"></i> Fast</span> <span>Referrals</span></div>
                     </div>
+                    <div class="hero-actions">
+                        <button type="button" class="btn-services-toggle" id="services-toggle" aria-expanded="false" aria-controls="ssd-services">
+                            <span>Show SSD Services</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="hero-illustration">
                     <div class="glass-card-illus">
@@ -717,6 +781,7 @@
             @endif
 
             <!-- Services grid (magnificent cards) -->
+            <section class="services-section" id="ssd-services" aria-label="SSD services offered">
             <div class="services-header">
                 <h2>Integrated <span>Support Services</span></h2>
                 <p style="color:#bdd8ff;"><i class="fas fa-sync-alt"></i> real-time dashboard</p>
@@ -781,6 +846,7 @@
                     </div>
                 </div>
             </div>
+            </section>
 
             <!-- Full featured footer -->
             <footer class="main-footer">
@@ -836,6 +902,34 @@
 
         <!-- Micro animation (purely visual, no functional override) -->
         <script>
+            const servicesToggle = document.getElementById('services-toggle');
+            const servicesSection = document.getElementById('ssd-services');
+
+            function setServicesOpen(isOpen, shouldScroll = false) {
+                document.body.classList.toggle('services-open', isOpen);
+                servicesToggle?.setAttribute('aria-expanded', String(isOpen));
+
+                const label = servicesToggle?.querySelector('span');
+                if (label) {
+                    label.textContent = isOpen ? 'Hide SSD Services' : 'Show SSD Services';
+                }
+
+                if (isOpen && shouldScroll && servicesSection) {
+                    window.setTimeout(() => {
+                        servicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 180);
+                }
+            }
+
+            servicesToggle?.addEventListener('click', () => {
+                const willOpen = !document.body.classList.contains('services-open');
+                setServicesOpen(willOpen, willOpen);
+            });
+
+            if (window.location.hash === '#ssd-services') {
+                setServicesOpen(true, false);
+            }
+
             document.querySelectorAll('.btn-service').forEach(btn => {
                 if(!btn.classList.contains('btn-disabled')) {
                     btn.addEventListener('click', (e) => {
