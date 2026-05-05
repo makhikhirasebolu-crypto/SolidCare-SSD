@@ -15,6 +15,11 @@
                 box-sizing: border-box;
             }
 
+            html {
+                width: 100%;
+                overflow-x: hidden;
+            }
+
             body {
                 font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
                 background: #0a0f1c;
@@ -54,9 +59,10 @@
             ::-webkit-scrollbar-thumb { background: #f0b429; border-radius: 10px; }
 
             .app-container {
+                width: 100%;
                 max-width: 1400px;
                 margin: 0 auto;
-                padding: 0 32px;
+                padding: 0 clamp(16px, 4vw, 32px);
             }
 
             /* ========== HEADER (modern glass) ========== */
@@ -75,6 +81,7 @@
                 align-items: center;
                 gap: 14px;
                 flex-wrap: wrap;
+                min-width: 0;
             }
             .brand-icon {
                 font-size: 2rem;
@@ -83,7 +90,7 @@
             }
             .brand-name {
                 font-weight: 800;
-                font-size: 1.8rem;
+                font-size: clamp(1.25rem, 5vw, 1.8rem);
                 letter-spacing: -0.02em;
                 background: linear-gradient(135deg, #ffffff, #e2e8f0);
                 background-clip: text;
@@ -103,8 +110,11 @@
                 display: flex;
                 gap: 20px;
                 align-items: center;
+                flex-wrap: wrap;
             }
             .user-welcome {
+                display: inline-flex;
+                align-items: center;
                 background: rgba(255,255,255,0.05);
                 padding: 8px 20px;
                 border-radius: 40px;
@@ -146,9 +156,11 @@
                 align-items: center;
                 gap: 32px;
                 box-shadow: 0 28px 50px -18px black;
+                overflow: hidden;
             }
             .hero-text {
-                flex: 1;
+                flex: 1 1 420px;
+                min-width: 0;
             }
             .hero-tag {
                 font-size: 0.75rem;
@@ -178,21 +190,28 @@
                 margin-bottom: 28px;
             }
             .hero-stats {
-                display: flex;
-                gap: 28px;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 20px;
+                max-width: 620px;
             }
             .stat-block {
                 display: flex;
                 align-items: center;
                 gap: 8px;
+                min-width: 0;
             }
             .stat-digit {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
                 font-weight: 800;
-                font-size: 1.5rem;
+                font-size: clamp(1.05rem, 3vw, 1.5rem);
                 color: #f0b429;
             }
             .hero-illustration {
-                flex: 0.5;
+                flex: 1 1 280px;
                 min-width: 180px;
                 text-align: center;
             }
@@ -208,8 +227,10 @@
                 flex-direction: column;
                 align-items: center;
                 gap: 0.9rem;
+                width: min(100%, 360px);
             }
             .hero-logo-panel {
+                width: 100%;
                 background: #18181c;
                 color: #f8f7f2;
                 padding: 1rem 1.3rem 0.8rem;
@@ -236,16 +257,19 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 0.8rem;
+                width: 100%;
                 color: #f5e9c9;
                 font-family: Georgia, 'Times New Roman', serif;
                 font-size: 1.3rem;
                 letter-spacing: 0.1em;
                 text-transform: uppercase;
+                justify-content: center;
             }
             .hero-logo-country::before,
             .hero-logo-country::after {
                 content: "";
-                width: 4rem;
+                flex: 1 1 2rem;
+                max-width: 4rem;
                 height: 1px;
                 background: rgba(240,180,41,0.55);
             }
@@ -288,7 +312,7 @@
             }
             .service-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
                 gap: 32px;
                 margin-bottom: 70px;
             }
@@ -454,11 +478,115 @@
             }
 
             @media (max-width: 880px) {
-                .app-container { padding: 0 20px; }
-                .hero-panel { padding: 32px 28px; flex-direction: column; text-align: center; }
+                .hero-panel {
+                    padding: 32px 28px;
+                    flex-direction: column;
+                    text-align: center;
+                    align-items: stretch;
+                    border-radius: 34px;
+                }
+                .hero-description { margin-inline: auto; }
                 .hero-stats { justify-content: center; }
                 .site-header { flex-direction: column; gap: 16px; align-items: stretch; }
                 .header-actions { justify-content: space-between; }
+                .hero-illustration { width: 100%; }
+                .glass-card-illus { width: 100%; max-width: 390px; margin: 0 auto; }
+                .service-card { border-radius: 28px; }
+            }
+
+            @media (max-width: 560px) {
+                .site-header {
+                    padding: 18px 0 16px;
+                    margin-bottom: 24px;
+                }
+                .brand-group,
+                .header-actions {
+                    justify-content: center;
+                }
+                .header-actions {
+                    gap: 10px;
+                }
+                .user-welcome,
+                .btn-logout {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                    text-align: center;
+                    justify-content: center;
+                }
+                .hero-panel {
+                    padding: 24px 18px;
+                    gap: 24px;
+                    margin-bottom: 42px;
+                    border-radius: 28px;
+                }
+                .hero-main-title {
+                    font-size: clamp(1.85rem, 9vw, 2.45rem);
+                }
+                .hero-description {
+                    font-size: 0.92rem;
+                }
+                .hero-stats {
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 10px;
+                }
+                .stat-block {
+                    flex-direction: column;
+                    justify-content: flex-start;
+                    gap: 4px;
+                    font-size: 0.82rem;
+                    line-height: 1.25;
+                    text-align: center;
+                }
+                .stat-digit {
+                    flex-direction: column;
+                    gap: 2px;
+                    line-height: 1.1;
+                }
+                .glass-card-illus {
+                    padding: 20px 14px;
+                    border-radius: 28px;
+                }
+                .hero-logo-lockup {
+                    width: min(100%, 300px);
+                }
+                .hero-logo-panel {
+                    padding: 0.85rem 1rem 0.75rem;
+                }
+                .hero-logo-title {
+                    font-size: clamp(1.55rem, 7vw, 1.9rem);
+                }
+                .hero-logo-subtitle {
+                    font-size: 0.72rem;
+                }
+                .hero-logo-country {
+                    gap: 0.6rem;
+                    font-size: 1.05rem;
+                }
+                .services-header {
+                    gap: 8px;
+                    margin-bottom: 22px;
+                }
+                .services-header h2 {
+                    font-size: 1.55rem;
+                }
+                .service-grid {
+                    gap: 20px;
+                    margin-bottom: 48px;
+                }
+                .service-card {
+                    padding: 1.35rem;
+                    border-radius: 24px;
+                }
+                .service-card h3 {
+                    font-size: 1.35rem;
+                }
+                .btn-service,
+                .btn-disabled {
+                    width: 100%;
+                    justify-content: center;
+                    padding-inline: 16px;
+                    text-align: center;
+                }
             }
         </style>
     </head>
