@@ -519,27 +519,38 @@
                     margin-bottom: 42px;
                     border-radius: 28px;
                 }
+                .hero-tag {
+                    font-size: 0.66rem;
+                    letter-spacing: 1px;
+                    padding: 5px 10px;
+                    margin-bottom: 14px;
+                }
                 .hero-main-title {
-                    font-size: clamp(1.85rem, 9vw, 2.45rem);
+                    font-size: clamp(1.65rem, 8vw, 2.15rem);
+                    line-height: 1.15;
+                    margin-bottom: 14px;
                 }
                 .hero-description {
-                    font-size: 0.92rem;
+                    font-size: 0.84rem;
+                    line-height: 1.5;
+                    margin-bottom: 22px;
                 }
                 .hero-stats {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 10px;
+                    gap: 8px;
                 }
                 .stat-block {
                     flex-direction: column;
                     justify-content: flex-start;
-                    gap: 4px;
-                    font-size: 0.82rem;
+                    gap: 3px;
+                    font-size: 0.74rem;
                     line-height: 1.25;
                     text-align: center;
                 }
                 .stat-digit {
                     flex-direction: column;
                     gap: 2px;
+                    font-size: 1rem;
                     line-height: 1.1;
                 }
                 .glass-card-illus {
@@ -547,20 +558,21 @@
                     border-radius: 28px;
                 }
                 .hero-logo-lockup {
-                    width: min(100%, 300px);
+                    width: min(100%, 280px);
                 }
                 .hero-logo-panel {
-                    padding: 0.85rem 1rem 0.75rem;
+                    padding: 0.75rem 0.85rem 0.68rem;
                 }
                 .hero-logo-title {
-                    font-size: clamp(1.55rem, 7vw, 1.9rem);
+                    font-size: clamp(1.35rem, 6.5vw, 1.7rem);
                 }
                 .hero-logo-subtitle {
-                    font-size: 0.72rem;
+                    font-size: 0.64rem;
+                    letter-spacing: 0.08em;
                 }
                 .hero-logo-country {
                     gap: 0.6rem;
-                    font-size: 1.05rem;
+                    font-size: 0.95rem;
                 }
                 .services-header {
                     gap: 8px;
@@ -586,6 +598,50 @@
                     justify-content: center;
                     padding-inline: 16px;
                     text-align: center;
+                }
+            }
+
+            @media (max-width: 380px) {
+                .app-container {
+                    padding-inline: 10px;
+                }
+                .hero-panel {
+                    padding: 20px 12px;
+                    gap: 20px;
+                    border-radius: 24px;
+                }
+                .hero-tag {
+                    max-width: 100%;
+                    white-space: normal;
+                }
+                .hero-main-title {
+                    font-size: 1.55rem;
+                }
+                .hero-description {
+                    font-size: 0.8rem;
+                }
+                .stat-block {
+                    font-size: 0.68rem;
+                }
+                .stat-digit {
+                    font-size: 0.92rem;
+                }
+                .glass-card-illus {
+                    padding: 16px 10px;
+                    border-radius: 22px;
+                }
+                .hero-logo-lockup {
+                    width: min(100%, 248px);
+                }
+                .hero-logo-title {
+                    font-size: 1.25rem;
+                }
+                .hero-logo-subtitle {
+                    font-size: 0.58rem;
+                }
+                .hero-logo-country {
+                    font-size: 0.84rem;
+                    letter-spacing: 0.08em;
                 }
             }
         </style>
