@@ -185,6 +185,10 @@
                 <div class="alert alert-danger mb-4">{{ session('error') }}</div>
             @endif
 
+            @if (session('accommodation_email_status'))
+                <div class="alert alert-info mb-4">{{ session('accommodation_email_status') }}</div>
+            @endif
+
             @if ($errors->any())
                 <div class="alert alert-danger mb-4">
                     @foreach ($errors->all() as $error)

@@ -181,14 +181,7 @@ class AuthController extends Controller
                 'email',
                 'max:255',
                 function (string $attribute, mixed $value, \Closure $fail) {
-                    $existingStudent = $this->studentApprovedForRegistration($value);
-
-                    if (! $existingStudent) {
-                        $fail('This email address is not approved for student registration. Contact the administrator.');
-                        return;
-                    }
-
-                    if (Student::query()->where('user_id', $existingStudent->id)->exists()) {
+                    if ($this->emailAlreadyRegistered($value)) {
                         $fail('This email address is already registered.');
                     }
                 },
@@ -213,18 +206,9 @@ class AuthController extends Controller
 
         $data = $request->validate($rules);
 
-        $user = $this->studentApprovedForRegistration($data['email']);
-
-        if (! $user) {
-            return back()
-                ->withInput($request->except('password', 'password_confirmation'))
-                ->withErrors([
-                    'email' => 'This email address is not approved for student registration. Contact the administrator.',
-                ]);
-        }
-
-        $user->update([
+        $user = User::create([
             'name' => $data['name'],
+            'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => 'student',
             'student_type' => $data['student_type'],
@@ -282,24 +266,22 @@ class AuthController extends Controller
                     }
                 },
             ],
-            'password' => [Rule::requiredIf($request->input('role') !== 'student'), 'nullable', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
             'role' => ['required', 'in:student,executive,ssd_assistant_1,ssd_assistant_2,psychologist,senior_nurse_officer,warden,yearleader'],
             'faculty' => ['required_if:role,yearleader', 'nullable', 'string', 'max:255'],
             'class' => ['required_if:role,yearleader', 'nullable', 'string', 'max:100'],
             'year' => ['required_if:role,yearleader', 'nullable', 'string', 'max:50'],
         ]);
 
-        $temporaryPassword = $data['password'] ?? Str::random(16);
+        $temporaryPassword = $data['password'];
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($temporaryPassword),
             'role' => $data['role'],
-            'password_temporary' => $data['role'] !== 'student',
-            'temporary_password_expires_at' => $data['role'] !== 'student'
-                ? Carbon::now()->addDays(2)
-                : null,
+            'password_temporary' => true,
+            'temporary_password_expires_at' => Carbon::now()->addDays(2),
         ]);
 
         if ($data['role'] === 'yearleader') {
@@ -311,11 +293,9 @@ class AuthController extends Controller
             ]);
         }
 
-        $message = $data['role'] === 'student'
-            ? 'Student email approved successfully. The student can now complete registration using this email address.'
-            : 'User created successfully. Temporary password: ' . $temporaryPassword . ' (expires in 2 days).';
-
-        return redirect()->route('admin.users.create')->with('success', $message);
+        return redirect()
+            ->route('admin.users.create')
+            ->with('success', 'User created successfully. Temporary password: ' . $temporaryPassword . ' (expires in 2 days).');
     }
 
     public function showTemporaryPasswordForm()
@@ -1230,11 +1210,40 @@ class AuthController extends Controller
 
         $application->update($updatePayload);
 
-        $this->sendAccommodationStatusEmail($application);
+        $emailStatus = $this->sendAccommodationStatusEmail($application);
 
         return redirect()
             ->route('student.accommodation.pending')
-            ->with('success', 'Application status updated to ' . ucfirst($data['status']) . '.');
+            ->with('success', 'Application status updated to ' . ucfirst($data['status']) . '.')
+            ->with('accommodation_email_status', $emailStatus['message']);
+    }
+
+    public function resendAccommodationStatusEmail(AccommodationApplication $application)
+    {
+        if (!Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->role !== 'executive') {
+            return redirect()->route('accommodation');
+        }
+
+        if (! in_array($application->status, ['admitted', 'conditional', 'rejected'], true)) {
+            return redirect()
+                ->route('student.accommodation.pending')
+                ->with('error', 'Only admitted, conditional, or rejected applications can have status emails resent.');
+        }
+
+        $emailStatus = $this->sendAccommodationStatusEmail($application);
+
+        return redirect()
+            ->route('student.accommodation.pending')
+            ->with($emailStatus['success'] ? 'success' : 'error', $emailStatus['success']
+                ? 'Accommodation status email resent.'
+                : 'Accommodation status email could not be resent.')
+            ->with('accommodation_email_status', $emailStatus['message']);
     }
 
     public function applyAccommodation()
@@ -2158,7 +2167,7 @@ class AuthController extends Controller
             ];
         }
 
-        $message = 'Accommodation status updated to ' . $statusLabel . '. Email handoff completed for ' . $this->formatEmailRecipientList($submittedRecipients) . '. This does not confirm inbox delivery.';
+        $message = 'Accommodation status updated to ' . $statusLabel . '. Email sent to ' . $this->formatEmailRecipientList($submittedRecipients) . '.';
 
         if ($messageIds !== []) {
             $message .= ' Reference ID ' . (count($messageIds) === 1 ? 'is ' : 's are ') . $this->formatEmailRecipientList($messageIds) . '.';
@@ -2603,24 +2612,6 @@ class AuthController extends Controller
             || Admin::query()
                 ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
                 ->exists();
-    }
-
-    protected function studentApprovedForRegistration(mixed $email): ?User
-    {
-        if (! is_string($email)) {
-            return null;
-        }
-
-        $normalizedEmail = $this->normalizeLoginIdentifier($email);
-
-        if (! filled($normalizedEmail)) {
-            return null;
-        }
-
-        return User::query()
-            ->where('role', 'student')
-            ->whereRaw('LOWER(TRIM(email)) = ?', [$normalizedEmail])
-            ->first();
     }
 
     protected function canAccessClinic(User $user): bool

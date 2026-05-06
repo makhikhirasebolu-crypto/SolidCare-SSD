@@ -926,7 +926,7 @@ class AccommodationController extends Controller
             ];
         }
 
-        $message = 'Accommodation status updated to ' . $statusLabel . '. Email handoff completed for ' . $this->formatEmailRecipientList($submittedRecipients) . '. This does not confirm inbox delivery.';
+        $message = 'Accommodation status updated to ' . $statusLabel . '. Email sent to ' . $this->formatEmailRecipientList($submittedRecipients) . '.';
 
         if ($messageIds !== []) {
             $message .= ' Reference ID ' . (count($messageIds) === 1 ? 'is ' : 's are ') . $this->formatEmailRecipientList($messageIds) . '.';

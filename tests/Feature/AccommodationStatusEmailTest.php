@@ -36,7 +36,7 @@ class AccommodationStatusEmailTest extends TestCase
         $response->assertSessionHas('success', 'Application status updated to Admitted.');
         $response->assertSessionHas(
             'accommodation_email_status',
-            $this->statusHandoffMessage('admitted', [$application->email, 'student.account@example.com'])
+            $this->statusEmailMessage('admitted', [$application->email, 'student.account@example.com'])
         );
 
         $this->assertDatabaseHas('accommodation_applications', [
@@ -81,7 +81,7 @@ class AccommodationStatusEmailTest extends TestCase
         $response->assertRedirect(route('student.accommodation.pending'));
         $response->assertSessionHas(
             'accommodation_email_status',
-            $this->statusHandoffMessage('admitted', [$application->email, 'student.account@example.com'])
+            $this->statusEmailMessage('admitted', [$application->email, 'student.account@example.com'])
         );
 
         Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $room) {
@@ -120,15 +120,21 @@ class AccommodationStatusEmailTest extends TestCase
 
         [$executive, $application] = $this->createExecutiveAndApplication();
 
-        $response = $this->actingAs($executive)->post(route('student.accommodation.status', $application), [
+        $payload = [
             'status' => $status,
-        ]);
+        ];
+
+        if ($status === 'rejected') {
+            $payload['rejection_reason'] = 'No rooms are currently available for this applicant.';
+        }
+
+        $response = $this->actingAs($executive)->post(route('student.accommodation.status', $application), $payload);
 
         $response->assertRedirect(route('student.accommodation.pending'));
         $response->assertSessionHas('success', 'Application status updated to ' . ucfirst($status) . '.');
         $response->assertSessionHas(
             'accommodation_email_status',
-            $this->statusHandoffMessage($status, [$application->email, 'student.account@example.com'])
+            $this->statusEmailMessage($status, [$application->email, 'student.account@example.com'])
         );
 
         $this->assertDatabaseHas('accommodation_applications', [
@@ -196,8 +202,8 @@ class AccommodationStatusEmailTest extends TestCase
         return [$executive, $application];
     }
 
-    private function statusHandoffMessage(string $status, array $recipients): string
+    private function statusEmailMessage(string $status, array $recipients): string
     {
-        return 'Accommodation status updated to ' . Str::headline($status) . '. Email handoff completed for ' . implode(' and ', $recipients) . '. This does not confirm inbox delivery.';
+        return 'Accommodation status updated to ' . Str::headline($status) . '. Email sent to ' . implode(' and ', $recipients) . '.';
     }
 }

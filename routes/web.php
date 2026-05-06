@@ -35,6 +35,7 @@ Route::get('/accommodation/rooms', [AuthController::class, 'roomManagement'])->n
 Route::post('/accommodation/rooms', [AuthController::class, 'storeRoom'])->name('student.accommodation.rooms.store');
 Route::post('/accommodation/rooms/defaults', [AuthController::class, 'seedDefaultRooms'])->name('student.accommodation.rooms.defaults');
 Route::post('/accommodation/{application}/status', [AuthController::class, 'updateAdmissionStatus'])->name('student.accommodation.status');
+Route::post('/accommodation/{application}/resend-email', [AuthController::class, 'resendAccommodationStatusEmail'])->name('student.accommodation.resend-email');
 Route::get('/accommodation/apply', [AuthController::class, 'applyAccommodation'])->name('student.accommodation.apply');
 Route::post('/accommodation/store', [AuthController::class, 'storeAccommodation'])->name('student.accommodation.store');
 Route::get('/accommodation/checkout', [AuthController::class, 'checkoutAccommodation'])->name('student.accommodation.checkout');
@@ -68,7 +69,7 @@ Route::get('/send-test-email', function () {
                     ->subject('Test Email from My Laravel App')
                     ->html('<h1>Test Email Sent!</h1><p>Hello, this is a test email from my Laravel application using SendGrid.</p>');
         });
-        return 'Test email handoff completed for ' . $testEmail . '. This does not confirm inbox delivery, so also check spam or the mail provider logs.';
+        return 'Test email sent to ' . $testEmail . '.';
     } catch (\Exception $e) {
         return 'Failed to send email: ' . $e->getMessage();
     }
