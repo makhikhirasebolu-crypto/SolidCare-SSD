@@ -479,7 +479,8 @@ class AccommodationController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'marital_status' => ['required', 'string', 'max:100'],
             'nationality' => ['required', 'string', 'max:100'],
-            'gender' => ['required', 'in:male,female'],
+            'nationality_other' => ['nullable', 'string', 'max:100', 'required_if:nationality,Other'],
+            'gender' => ['required', 'in:female'],
             'age' => ['required', 'integer', 'min:16', 'max:120'],
             'faculty' => ['required', 'string', 'max:100'],
             'programme' => ['required', 'string', 'max:255'],
@@ -514,6 +515,10 @@ class AccommodationController extends Controller
             'on_chronic_treatment',
         ] as $booleanField) {
             $data[$booleanField] = $request->boolean($booleanField);
+        }
+
+        if ($data['nationality'] === 'Other') {
+            $data['nationality'] = $data['nationality_other'];
         }
 
         if (! $data['has_physical_disability']) {

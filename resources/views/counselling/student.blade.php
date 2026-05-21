@@ -229,6 +229,64 @@
         box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
     }
 
+    .slot-picker {
+        margin-top: 0.85rem;
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .slot-summary {
+        padding: 0.85rem 1rem;
+        border-radius: 16px;
+        border: 1px solid rgba(15, 118, 110, 0.16);
+        background: #f0fdfa;
+        color: #115e59;
+        font-weight: 800;
+    }
+
+    .slot-picker-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+        gap: 0.65rem;
+    }
+
+    .slot-button {
+        min-height: 46px;
+        border: 1px solid #cbd5e1;
+        border-radius: 14px;
+        background: #ffffff;
+        color: #17324d;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .slot-button.is-selected {
+        border-color: #0f766e;
+        background: #0f766e;
+        color: #ffffff;
+    }
+
+    .slot-button.is-booked,
+    .slot-button:disabled {
+        border-color: #d1d5db;
+        background: #f3f4f6;
+        color: #94a3b8;
+        cursor: not-allowed;
+    }
+
+    .booking-conflict {
+        display: none;
+        padding: 0.75rem 0.9rem;
+        border-radius: 14px;
+        background: #fee2e2;
+        color: #991b1b;
+        font-weight: 700;
+    }
+
+    .booking-conflict.is-visible {
+        display: block;
+    }
+
     .submit-button {
         margin-top: 1rem;
         background: linear-gradient(135deg, #0f766e 0%, #0f5132 100%);
@@ -303,8 +361,18 @@
     $recordedSessions = $bookings->count();
     $pendingSessions = $bookings->where('status', 'pending')->count();
     $defaultPanel = ($errors->any() || session('success')) ? 'book-session' : 'chart-board';
+    $campusOptions = ['MP campus', 'Main campus'];
     $sexOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
-    $studyYearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', '6th Year', 'Postgraduate'];
+    $studyYearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+    $counsellingReasonOptions = [
+        'Grief and loss',
+        'Sexual assault',
+        'Mental illness',
+        'Relationships',
+        'Family dynamics',
+        'Depression and anxiety',
+        'Academic issue',
+    ];
 @endphp
 
 <div class="summary-grid">
@@ -374,9 +442,19 @@
     <h4>Book Session</h4>
     <p class="panel-copy">Fill in the form below to book a counselling session. When you submit it, the record is stored in the database through the existing counselling booking route.</p>
 
-    <form action="{{ route('counselling.bookings.store') }}" method="POST">
+    <form action="{{ route('counselling.bookings.store') }}" method="POST" id="counselling-booking-form">
         @csrf
         <div class="form-grid">
+            <div>
+                <label for="campus" class="form-label">Campus</label>
+                <select name="campus" id="campus" class="form-select" required>
+                    <option value="">Select campus</option>
+                    @foreach ($campusOptions as $campusOption)
+                        <option value="{{ $campusOption }}" {{ old('campus') === $campusOption ? 'selected' : '' }}>{{ $campusOption }}</option>
+                    @endforeach
+                </select>
+            </div>
+
             <div>
                 <label for="sex" class="form-label">Sex</label>
                 <select name="sex" id="sex" class="form-select" required>
@@ -404,22 +482,40 @@
 
             <div class="full-width">
                 <strong>Select a Date &amp; Time</strong>
-                <p class="panel-copy mb-0">Choose your preferred counselling date and time below.</p>
+                <p class="panel-copy mb-0">Choose your preferred counselling date and time below. Sessions can be requested from 08:00 to 16:30.</p>
             </div>
 
             <div>
                 <label for="preferred_date" class="form-label">Preferred date</label>
-                <input type="date" name="preferred_date" id="preferred_date" class="form-control" min="{{ now()->toDateString() }}" value="{{ old('preferred_date') }}" required>
+                <input
+                    type="date"
+                    name="preferred_date"
+                    id="preferred_date"
+                    class="form-control js-preferred-date"
+                    min="{{ now()->toDateString() }}"
+                    value="{{ old('preferred_date') }}"
+                    required
+                >
             </div>
 
             <div>
-                <label for="preferred_time" class="form-label">Preferred time</label>
-                <input type="time" name="preferred_time" id="preferred_time" class="form-control" value="{{ old('preferred_time') }}" required>
+                <label class="form-label" for="preferred-session-summary">Preferred session</label>
+                <input type="hidden" name="preferred_time" id="preferred_time" class="js-preferred-time" value="{{ old('preferred_time') }}" required>
+                <div class="slot-picker">
+                    <div class="slot-summary" id="preferred-session-summary">Choose a date to see available sessions.</div>
+                    <div class="slot-picker-grid js-preferred-slot-grid" id="preferred-slot-grid"></div>
+                    <div class="booking-conflict" id="preferred-session-conflict">That counselling session time is already booked. Choose another available slot.</div>
+                </div>
             </div>
 
             <div class="full-width">
                 <label for="reason" class="form-label">Cause of counselling</label>
-                <textarea name="reason" id="reason" class="form-control" rows="4" maxlength="1000" placeholder="Briefly explain the cause or reason for this counselling request." required>{{ old('reason') }}</textarea>
+                <select name="reason" id="reason" class="form-select" required>
+                    <option value="">Select cause of counselling</option>
+                    @foreach ($counsellingReasonOptions as $reasonOption)
+                        <option value="{{ $reasonOption }}" {{ old('reason') === $reasonOption ? 'selected' : '' }}>{{ $reasonOption }}</option>
+                    @endforeach
+                </select>
             </div>
         </div>
 
@@ -447,6 +543,14 @@
                 <div class="session-row">
                     <strong>Preferred session</strong>
                     <span>{{ $booking->preferred_date ? $booking->preferred_date->format('d-m-Y') : '-' }} @if ($booking->preferred_time) at {{ $booking->preferred_time }} @endif</span>
+                </div>
+                <div class="session-row">
+                    <strong>Booked session</strong>
+                    <span>{{ $booking->appointment_date ? $booking->appointment_date->format('d-m-Y h:i A') : 'Not scheduled yet' }}</span>
+                </div>
+                <div class="session-row">
+                    <strong>Campus</strong>
+                    <span>{{ $booking->campus ?: '-' }}</span>
                 </div>
                 <div class="session-row">
                     <strong>Program</strong>
@@ -487,6 +591,201 @@
         });
 
         activatePanel('{{ $defaultPanel }}');
+
+        const bookingForm = document.getElementById('counselling-booking-form');
+        const campusInput = document.getElementById('campus');
+        const preferredDateInput = document.getElementById('preferred_date');
+        const preferredTimeInput = document.getElementById('preferred_time');
+        const preferredSlotGrid = document.getElementById('preferred-slot-grid');
+        const preferredSummary = document.getElementById('preferred-session-summary');
+        const preferredConflict = document.getElementById('preferred-session-conflict');
+        const unavailableSlots = @json($unavailableSessionSlots ?? []);
+        const sessionMinutes = 75;
+        const slotGapMinutes = 5;
+        const slotIntervalMinutes = sessionMinutes + slotGapMinutes;
+        const firstSlotMinutes = 8 * 60;
+        const closingMinutes = (16 * 60) + 30;
+
+        const fromMinutes = function (minutesValue) {
+            const hour = Math.floor(minutesValue / 60);
+            const minute = minutesValue % 60;
+
+            return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        };
+
+        const buildSlotStarts = function () {
+            const starts = [];
+
+            for (let minutesValue = firstSlotMinutes; minutesValue + sessionMinutes <= closingMinutes; minutesValue += slotIntervalMinutes) {
+                starts.push(fromMinutes(minutesValue));
+            }
+
+            return starts;
+        };
+
+        const toDisplayTime = function (timeValue) {
+            const parts = String(timeValue || '').split(':').map(Number);
+            const suffix = parts[0] >= 12 ? 'PM' : 'AM';
+            const hour = parts[0] % 12 || 12;
+
+            return String(hour) + ':' + String(parts[1]).padStart(2, '0') + ' ' + suffix;
+        };
+
+        const toDisplayDate = function (dateValue) {
+            const parts = String(dateValue || '').split('-');
+
+            if (parts.length !== 3) {
+                return dateValue || '';
+            }
+
+            return parts[2] + '-' + parts[1] + '-' + parts[0];
+        };
+
+        const addMinutesToSlot = function (dateValue, timeValue, minutesToAdd) {
+            const date = new Date(dateValue + 'T' + timeValue + ':00');
+            date.setMinutes(date.getMinutes() + minutesToAdd);
+
+            return date.getFullYear()
+                + '-' + String(date.getMonth() + 1).padStart(2, '0')
+                + '-' + String(date.getDate()).padStart(2, '0')
+                + 'T' + String(date.getHours()).padStart(2, '0')
+                + ':' + String(date.getMinutes()).padStart(2, '0');
+        };
+
+        const rangesOverlap = function (leftStart, leftEnd, rightStart, rightEnd) {
+            return leftStart < rightEnd && rightStart < leftEnd;
+        };
+
+        const isPastSlot = function (slotValue) {
+            return new Date(slotValue + ':00') < new Date();
+        };
+
+        const slotHasConflict = function (slotValue, slotEnd) {
+            const campusValue = campusInput ? campusInput.value : '';
+
+            return unavailableSlots.some(function (slot) {
+                return (slot.campus === campusValue || slot.campus === '') && rangesOverlap(slotValue, slotEnd, slot.value, slot.end);
+            });
+        };
+
+        const updatePreferredSummary = function () {
+            if (!preferredSummary || !preferredDateInput || !preferredTimeInput) {
+                return;
+            }
+
+            if (!campusInput || !campusInput.value) {
+                preferredSummary.textContent = 'Choose a campus to see available sessions for that campus.';
+                return;
+            }
+
+            if (!preferredDateInput.value) {
+                preferredSummary.textContent = 'Choose a date to see available sessions at ' + campusInput.value + '.';
+                return;
+            }
+
+            if (!preferredTimeInput.value) {
+                preferredSummary.textContent = 'Selected campus: ' + campusInput.value + '. Selected date: ' + toDisplayDate(preferredDateInput.value) + '. Choose an available time.';
+                return;
+            }
+
+            preferredSummary.textContent = 'Selected session: ' + campusInput.value + ', ' + toDisplayDate(preferredDateInput.value) + ' at ' + toDisplayTime(preferredTimeInput.value);
+        };
+
+        const renderPreferredSlots = function () {
+            if (!preferredDateInput || !preferredTimeInput || !preferredSlotGrid) {
+                return;
+            }
+
+            preferredSlotGrid.innerHTML = '';
+
+            if (!campusInput || !campusInput.value || !preferredDateInput.value) {
+                preferredTimeInput.value = '';
+                updatePreferredSummary();
+                return;
+            }
+
+            buildSlotStarts().forEach(function (timeValue) {
+                const slotValue = preferredDateInput.value + 'T' + timeValue;
+                const slotEnd = addMinutesToSlot(preferredDateInput.value, timeValue, sessionMinutes);
+                const hasConflict = slotHasConflict(slotValue, slotEnd);
+                const isPast = isPastSlot(slotValue);
+                const isSelected = preferredTimeInput.value === timeValue;
+                const button = document.createElement('button');
+
+                button.type = 'button';
+                button.className = 'slot-button';
+                button.textContent = toDisplayTime(timeValue);
+
+                if (hasConflict) {
+                    button.classList.add('is-booked');
+                    button.title = 'This session time is already booked.';
+                }
+
+                if (isSelected) {
+                    button.classList.add('is-selected');
+                }
+
+                if (hasConflict || isPast) {
+                    button.disabled = true;
+                }
+
+                button.addEventListener('click', function () {
+                    preferredTimeInput.value = timeValue;
+                    if (preferredConflict) {
+                        preferredConflict.classList.remove('is-visible');
+                    }
+                    renderPreferredSlots();
+                    updatePreferredSummary();
+                });
+
+                preferredSlotGrid.appendChild(button);
+            });
+
+            if (preferredTimeInput.value) {
+                const selectedValue = preferredDateInput.value + 'T' + preferredTimeInput.value;
+                const selectedEnd = addMinutesToSlot(preferredDateInput.value, preferredTimeInput.value, sessionMinutes);
+                const selectedIsUnavailable = slotHasConflict(selectedValue, selectedEnd) || isPastSlot(selectedValue);
+
+                if (selectedIsUnavailable) {
+                    preferredTimeInput.value = '';
+                    if (preferredConflict) {
+                        preferredConflict.classList.add('is-visible');
+                    }
+                }
+            }
+
+            updatePreferredSummary();
+        };
+
+        if (preferredDateInput && preferredTimeInput && preferredSlotGrid) {
+            const resetPreferredSession = function () {
+                preferredTimeInput.value = '';
+                if (preferredConflict) {
+                    preferredConflict.classList.remove('is-visible');
+                }
+                renderPreferredSlots();
+            };
+
+            if (campusInput) {
+                campusInput.addEventListener('change', resetPreferredSession);
+            }
+
+            preferredDateInput.addEventListener('change', resetPreferredSession);
+
+            renderPreferredSlots();
+        }
+
+        if (bookingForm && preferredTimeInput) {
+            bookingForm.addEventListener('submit', function (event) {
+                if (!preferredTimeInput.value) {
+                    event.preventDefault();
+                    if (preferredConflict) {
+                        preferredConflict.textContent = 'Choose an available counselling session time before booking.';
+                        preferredConflict.classList.add('is-visible');
+                    }
+                }
+            });
+        }
 
         const chatBoard = document.getElementById('emergency-chat-board');
         const chatForm = document.getElementById('emergency-chat-form');

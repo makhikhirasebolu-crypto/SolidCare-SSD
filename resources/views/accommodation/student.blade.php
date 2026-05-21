@@ -122,6 +122,13 @@
                 margin: 1.5rem 0 1rem;
                 color: #0f172a;
             }
+            .reallocation-panel {
+                background: #f8fafc;
+                border: 1px solid #dbeafe;
+                border-radius: 1rem;
+                padding: 1.25rem;
+                margin: 1rem 0 1.5rem;
+            }
             footer {
                 text-align: center;
                 padding: 1.5rem 0;
@@ -156,6 +163,13 @@
                         @if (session('error'))
                             <div class="alert alert-danger">{{ session('error') }}</div>
                         @endif
+                        @if ($errors->any())
+                            <div class="alert alert-danger">
+                                @foreach ($errors->all() as $error)
+                                    <div>{{ $error }}</div>
+                                @endforeach
+                            </div>
+                        @endif
 
                         @if ($user->student_type === 'new')
                             @if (isset($application))
@@ -178,6 +192,17 @@
                                         <div class="application-item">
                                             <span class="application-label">Application Status</span>
                                             <div class="application-value">{{ $statusLabel }}</div>
+                                        </div>
+                                        <div class="application-item">
+                                            <span class="application-label">Admission Done By</span>
+                                            <div class="application-value">
+                                                @if ($application->admissionProcessedBy)
+                                                    {{ $application->admissionProcessedBy->name ?: $application->admissionProcessedBy->email }}
+                                                    ({{ \Illuminate\Support\Str::headline($application->admissionProcessedBy->role) }})
+                                                @else
+                                                    Not recorded
+                                                @endif
+                                            </div>
                                         </div>
                                         <div class="application-item">
                                             <span class="application-label">Applied On</span>
@@ -243,6 +268,33 @@
                                     </div>
                                 @endif
 
+                                @if ($application->reallocation_status === 'pending' && $application->requestedRoom)
+                                    <div class="alert alert-info">
+                                        Room reallocation request pending for
+                                        <strong>
+                                            {{ $application->requestedRoom->block_name }}-{{ str_pad((string) $application->requestedRoom->room_number, 2, '0', STR_PAD_LEFT) }}
+                                        </strong>.
+                                    </div>
+                                @elseif ($application->reallocation_status === 'approved')
+                                    <div class="alert alert-success">
+                                        Your room reallocation request was approved.
+                                        @php
+                                            $reallocationActor = $application->roomReallocatedBy ?: $application->reallocationApprovedBy;
+                                        @endphp
+                                        @if ($reallocationActor)
+                                            <div class="mt-2">
+                                                <strong>Done by:</strong>
+                                                {{ $reallocationActor->name ?: $reallocationActor->email }}
+                                                ({{ \Illuminate\Support\Str::headline($reallocationActor->role) }})
+                                            </div>
+                                        @endif
+                                    </div>
+                                @elseif ($application->reallocation_status === 'rejected')
+                                    <div class="alert alert-danger">
+                                        Your last room reallocation request was rejected.
+                                    </div>
+                                @endif
+
                                 @if ($application->status === 'admitted')
                                     <div class="alert alert-info">
                                         Your accommodation has been admitted. A confirmation email will be sent by the accommodation team.
@@ -286,6 +338,48 @@
                                 @endif
 
                                 @if (in_array($application->status, ['admitted', 'checkout_rejected'], true))
+                                    @if ($application->reallocation_status !== 'pending')
+                                        <div class="reallocation-panel">
+                                            <h5 class="text-dark mb-2">Request Room Reallocation</h5>
+                                            <p class="text-muted mb-3">Choose the room you want before submitting your request to the warden.</p>
+
+                                            @if ($availableRooms->isEmpty())
+                                                <div class="alert alert-secondary mb-0">No alternative rooms are currently available.</div>
+                                            @else
+                                                <form method="POST" action="{{ route('student.accommodation.reallocation.store') }}">
+                                                    @csrf
+
+                                                    <div class="mb-3">
+                                                        <label for="requested_accommodation_room_id" class="form-label text-dark fw-semibold">Preferred Room</label>
+                                                        <select id="requested_accommodation_room_id" name="requested_accommodation_room_id" class="form-select" required>
+                                                            <option value="">Select room</option>
+                                                            @foreach ($availableRooms as $room)
+                                                                <option value="{{ $room->id }}" {{ (string) old('requested_accommodation_room_id') === (string) $room->id ? 'selected' : '' }}>
+                                                                    {{ $room->block_name }}-{{ str_pad((string) $room->room_number, 2, '0', STR_PAD_LEFT) }}
+                                                                    | {{ $room->occupied_beds }}/{{ $room->capacity }} occupied
+                                                                    | {{ $room->capacity - $room->occupied_beds }} spaces left
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+
+                                                    <div class="mb-3">
+                                                        <label for="reallocation_reason" class="form-label text-dark fw-semibold">Reason</label>
+                                                        <textarea
+                                                            id="reallocation_reason"
+                                                            name="reallocation_reason"
+                                                            class="form-control"
+                                                            rows="3"
+                                                            placeholder="Optional reason for the warden."
+                                                        >{{ old('reallocation_reason') }}</textarea>
+                                                    </div>
+
+                                                    <button type="submit" class="btn btn-primary btn-custom">Submit Reallocation Request</button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    @endif
+
                                     <div class="row g-4">
                                         <div class="col-md-6">
                                             <div class="card border-0 shadow-sm p-4 h-100">

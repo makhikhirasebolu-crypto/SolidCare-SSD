@@ -14,6 +14,9 @@ class AccommodationApplication extends Model
     protected $fillable = [
         'user_id',
         'accommodation_room_id',
+        'admission_processed_by_user_id',
+        'requested_accommodation_room_id',
+        'previous_accommodation_room_id',
         'full_name',
         'student_id',
         'contact_number',
@@ -53,6 +56,12 @@ class AccommodationApplication extends Model
         'checkout_reason',
         'checkout_requested_at',
         'checked_out_at',
+        'reallocation_status',
+        'reallocation_reason',
+        'reallocation_requested_at',
+        'reallocation_decided_at',
+        'reallocation_approved_by_user_id',
+        'room_reallocated_by_user_id',
         'rejection_reason',
         'status',
     ];
@@ -70,6 +79,8 @@ class AccommodationApplication extends Model
         'checkout_date' => 'date',
         'checkout_requested_at' => 'datetime',
         'checked_out_at' => 'datetime',
+        'reallocation_requested_at' => 'datetime',
+        'reallocation_decided_at' => 'datetime',
     ];
 
     public function user()
@@ -80,5 +91,30 @@ class AccommodationApplication extends Model
     public function room()
     {
         return $this->belongsTo(AccommodationRoom::class, 'accommodation_room_id');
+    }
+
+    public function admissionProcessedBy()
+    {
+        return $this->belongsTo(User::class, 'admission_processed_by_user_id');
+    }
+
+    public function requestedRoom()
+    {
+        return $this->belongsTo(AccommodationRoom::class, 'requested_accommodation_room_id');
+    }
+
+    public function previousRoom()
+    {
+        return $this->belongsTo(AccommodationRoom::class, 'previous_accommodation_room_id');
+    }
+
+    public function reallocationApprovedBy()
+    {
+        return $this->belongsTo(User::class, 'reallocation_approved_by_user_id');
+    }
+
+    public function roomReallocatedBy()
+    {
+        return $this->belongsTo(User::class, 'room_reallocated_by_user_id');
     }
 }

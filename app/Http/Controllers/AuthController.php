@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Counselling\Models\EmergencyCounsellingModel;
 use App\Counselling\Support\DatasetEmergencyCounsellingResponder;
-use App\Mail\AccommodationStatusUpdated;
+use App\Mail\CounsellingSessionScheduled;
 use App\Mail\CheckoutApproved;
 use App\Mail\CheckoutRejected;
 use App\Mail\CheckoutRequestSubmitted;
@@ -232,7 +232,9 @@ class AuthController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('home')->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
+        return redirect()
+            ->route('home')
+            ->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
     }
 
     public function showCreateUser()
@@ -254,6 +256,13 @@ class AuthController extends Controller
             'email' => $this->normalizeLoginIdentifier($request->input('email')),
         ]);
 
+        $facultyLabels = collect(config('limkokwing.faculties', []))
+            ->pluck('label')
+            ->all();
+        $programmeLabels = collect(config('limkokwing.faculties', []))
+            ->flatMap(fn (array $faculty) => $faculty['programmes'] ?? [])
+            ->all();
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -267,10 +276,10 @@ class AuthController extends Controller
                 },
             ],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'in:student,executive,ssd_assistant_1,ssd_assistant_2,psychologist,senior_nurse_officer,warden,yearleader'],
-            'faculty' => ['required_if:role,yearleader', 'nullable', 'string', 'max:255'],
-            'class' => ['required_if:role,yearleader', 'nullable', 'string', 'max:100'],
-            'year' => ['required_if:role,yearleader', 'nullable', 'string', 'max:50'],
+            'role' => ['required', 'in:executive,ssd_assistant_1,ssd_assistant_2,psychologist,senior_nurse_officer,warden,yearleader'],
+            'faculty' => ['required_if:role,yearleader', 'nullable', 'string', 'max:255', Rule::in($facultyLabels)],
+            'class' => ['required_if:role,yearleader', 'nullable', 'string', 'max:255', Rule::in($programmeLabels)],
+            'year' => ['required_if:role,yearleader', 'nullable', 'string', 'max:50', Rule::in($this->yearLeaderYearOptionsForProgramme($request->input('class')))],
         ]);
 
         $temporaryPassword = $data['password'];
@@ -282,6 +291,7 @@ class AuthController extends Controller
             'role' => $data['role'],
             'password_temporary' => true,
             'temporary_password_expires_at' => Carbon::now()->addDays(2),
+            'temporary_password_plain' => $temporaryPassword,
         ]);
 
         if ($data['role'] === 'yearleader') {
@@ -294,8 +304,60 @@ class AuthController extends Controller
         }
 
         return redirect()
-            ->route('admin.users.create')
+            ->route('dashboard', ['create_user' => 1])
             ->with('success', 'User created successfully. Temporary password: ' . $temporaryPassword . ' (expires in 2 days).');
+    }
+
+    public function deleteAdminUser(User $user)
+    {
+        if (! Auth::guard('admin')->check()) {
+            return redirect()->route('login');
+        }
+
+        if ($user->role === 'student') {
+            return redirect()
+                ->route('dashboard', ['members_report' => 1])
+                ->with('error', 'Student accounts cannot be removed from the members report.');
+        }
+
+        $memberName = $user->name;
+        $user->delete();
+
+        return redirect()
+            ->route('dashboard', ['members_report' => 1])
+            ->with('success', $memberName . ' has been removed and can no longer access the system.');
+    }
+
+    public function reissueTemporaryPassword(User $user)
+    {
+        if (! Auth::guard('admin')->check()) {
+            return redirect()->route('login');
+        }
+
+        if ($user->role === 'student') {
+            return redirect()
+                ->route('dashboard', ['members_report' => 1])
+                ->with('error', 'Temporary passwords can only be reissued for staff members.');
+        }
+
+        if (! $user->password_temporary || ! $user->temporary_password_expires_at || $user->temporary_password_expires_at->isPast()) {
+            return redirect()
+                ->route('dashboard', ['members_report' => 1])
+                ->with('error', 'This member does not have an active temporary password to reissue.');
+        }
+
+        $temporaryPassword = 'Temp-' . Str::random(10);
+
+        $user->forceFill([
+            'password' => Hash::make($temporaryPassword),
+            'password_temporary' => true,
+            'temporary_password_expires_at' => Carbon::now()->addDays(2),
+            'temporary_password_plain' => $temporaryPassword,
+        ])->save();
+
+        return redirect()
+            ->route('dashboard', ['members_report' => 1])
+            ->with('success', 'Temporary password reissued for ' . $user->name . ': ' . $temporaryPassword . ' (expires in 2 days).');
     }
 
     public function showTemporaryPasswordForm()
@@ -334,6 +396,7 @@ class AuthController extends Controller
         $user->password = Hash::make($data['password']);
         $user->password_temporary = false;
         $user->temporary_password_expires_at = null;
+        $user->temporary_password_plain = null;
         $user->save();
 
         return redirect()->route('home')->with('status', 'Password updated successfully.');
@@ -410,10 +473,19 @@ class AuthController extends Controller
         return $localPart . '@' . $suggestedDomain;
     }
 
-    public function dashboard()
+    public function dashboard(Request $request)
     {
         if (Auth::guard('admin')->check()) {
-            return view('admin.dashboard');
+            $showCreateUserForm = $request->boolean('create_user') || $request->session()->has('errors');
+            $showMembersReport = $request->boolean('members_report');
+            $members = $showMembersReport
+                ? User::query()
+                    ->where('role', '!=', 'student')
+                    ->latest()
+                    ->get(['id', 'name', 'email', 'role', 'password_temporary', 'temporary_password_expires_at', 'temporary_password_plain', 'created_at'])
+                : collect();
+
+            return view('admin.dashboard', compact('showCreateUserForm', 'showMembersReport', 'members'));
         }
 
         if (!Auth::guard('web')->check()) {
@@ -532,8 +604,9 @@ class AuthController extends Controller
         $bookings = CounsellingBooking::where('user_id', $user->id)
             ->latest()
             ->get();
+        $unavailableSessionSlots = $this->unavailableCounsellingSessionSlots();
 
-        return view('counselling.student', compact('user', 'bookings', 'emergencyChatMeta'));
+        return view('counselling.student', compact('user', 'bookings', 'emergencyChatMeta', 'unavailableSessionSlots'));
     }
 
     public function storeCounsellingBooking(Request $request)
@@ -549,19 +622,68 @@ class AuthController extends Controller
             return redirect()->route('home')->with('error', 'Only continuing students can access counselling services.');
         }
 
+        $counsellingReasonOptions = [
+            'Grief and loss',
+            'Sexual assault',
+            'Mental illness',
+            'Relationships',
+            'Family dynamics',
+            'Depression and anxiety',
+            'Academic issue',
+        ];
+
         $data = $request->validate([
+            'campus' => ['required', Rule::in(['MP campus', 'Main campus'])],
             'sex' => ['required', 'string', 'max:50'],
-            'reason' => ['required', 'string', 'max:1000'],
+            'reason' => ['required', Rule::in($counsellingReasonOptions)],
             'programme' => ['required', 'string', 'max:255'],
             'year_of_study' => ['required', 'string', 'max:50'],
             'preferred_date' => ['required', 'date', 'after_or_equal:today'],
-            'preferred_time' => ['required', 'date_format:H:i'],
+            'preferred_time' => ['required', 'date_format:H:i', 'after_or_equal:08:00', 'before_or_equal:16:30'],
         ]);
+
+        $preferredSessionStart = Carbon::parse($data['preferred_date'] . ' ' . $data['preferred_time'])->seconds(0);
+        $preferredSessionEnd = $preferredSessionStart->copy()->addMinutes(75);
+        $workdayStart = $preferredSessionStart->copy()->setTime(8, 0);
+        $workdayEnd = $preferredSessionStart->copy()->setTime(16, 30);
+
+        if ($preferredSessionStart->isPast()) {
+            return back()
+                ->withErrors([
+                    'preferred_time' => 'Choose an available future counselling session time.',
+                ])
+                ->withInput();
+        }
+
+        if ($preferredSessionEnd->gt($workdayEnd)) {
+            return back()
+                ->withErrors([
+                    'preferred_time' => 'Choose a counselling session that ends before Limkokwing closes at 16:30.',
+                ])
+                ->withInput();
+        }
+
+        if (! in_array($preferredSessionStart->format('H:i'), $this->counsellingAppointmentSlotStarts(), true) || $preferredSessionStart->lt($workdayStart)) {
+            return back()
+                ->withErrors([
+                    'preferred_time' => 'Choose one of the available counselling session slots.',
+                ])
+                ->withInput();
+        }
+
+        if ($this->counsellingBookingSlotConflicts($preferredSessionStart, $data['campus'])) {
+            return back()
+                ->withErrors([
+                    'preferred_time' => 'That counselling session time is already booked. Choose another available slot.',
+                ])
+                ->withInput();
+        }
 
         CounsellingBooking::create([
             'user_id' => $user->id,
             'student_name' => $user->name,
             'student_identity_number' => $user->student_id ?: $user->id_number,
+            'campus' => $data['campus'],
             'sex' => $data['sex'],
             'reason' => $data['reason'],
             'programme' => $data['programme'],
@@ -584,7 +706,7 @@ class AuthController extends Controller
         $user = Auth::guard('web')->user();
 
         if (! $this->canManageCounselling($user)) {
-            return redirect()->route('home')->with('error', 'Only psychologists can manage counselling appointments.');
+            return redirect()->route('home')->with('error', 'Only counselling managers can manage counselling appointments.');
         }
 
         $data = $request->validate([
@@ -603,6 +725,31 @@ class AuthController extends Controller
             $resolvedStatus = 'scheduled';
         }
 
+        if ($resolvedAppointmentDate) {
+            $slotStart = $resolvedAppointmentDate->copy();
+            $slotEnd = $slotStart->copy()->addMinutes(75);
+            $workdayStart = $slotStart->copy()->setTime(8, 0);
+            $workdayEnd = $slotStart->copy()->setTime(16, 30);
+
+            if ($slotStart->isPast()) {
+                return back()
+                    ->withErrors([
+                        'appointment_date' => 'The appointment date field must be a date after or equal to today.',
+                    ])
+                    ->withInput();
+            }
+
+            $validSlotStarts = $this->counsellingAppointmentSlotStarts();
+
+            if (! in_array($slotStart->format('H:i'), $validSlotStarts, true) || $slotStart->lt($workdayStart) || $slotEnd->gt($workdayEnd)) {
+                return back()
+                    ->withErrors([
+                        'appointment_date' => 'Choose one of the available appointment slots. Each session lasts 1 hour and 15 minutes.',
+                    ])
+                    ->withInput();
+            }
+        }
+
         if ($resolvedStatus === 'cancelled') {
             $resolvedAppointmentDate = null;
         }
@@ -616,16 +763,12 @@ class AuthController extends Controller
         }
 
         if ($resolvedAppointmentDate) {
-            $hasConflict = CounsellingBooking::query()
-                ->whereKeyNot($booking->id)
-                ->whereNotNull('appointment_date')
-                ->where('appointment_date', $resolvedAppointmentDate->format('Y-m-d H:i:s'))
-                ->exists();
+            $hasConflict = $this->counsellingBookingSlotConflicts($resolvedAppointmentDate, $booking->campus, $booking->id);
 
             if ($hasConflict) {
                 return back()
                     ->withErrors([
-                        'appointment_date' => 'That appointment date and time is already booked. Choose another slot.',
+                        'appointment_date' => 'That appointment session overlaps with another booking. Choose another slot.',
                     ])
                     ->withInput();
             }
@@ -636,6 +779,10 @@ class AuthController extends Controller
             'appointment_date' => $resolvedAppointmentDate,
             'counsellor_notes' => $data['counsellor_notes'] ?? null,
         ]);
+
+        if ($resolvedStatus === 'scheduled' && ($booking->wasChanged('status') || $booking->wasChanged('appointment_date'))) {
+            $this->notifyStudentOfScheduledCounsellingSession($booking->fresh('user'));
+        }
 
         return redirect()->route('counselling')->with('success', 'Counselling appointment updated successfully.');
     }
@@ -728,11 +875,13 @@ class AuthController extends Controller
             'stock_entries' => ['required', 'array', 'min:1'],
             'stock_entries.*.medicine_name' => ['required', 'string', 'max:255'],
             'stock_entries.*.quantity_received' => ['required', 'integer', 'min:0'],
+            'stock_entries.*.expiry_date' => ['required', 'date', 'after_or_equal:today'],
         ]);
 
         foreach ($data['stock_entries'] as $entry) {
             $existingItem = ClinicStockItem::whereRaw('LOWER(medicine_name) = ?', [strtolower($entry['medicine_name'])])->first();
             $receivedQuantity = (int) $entry['quantity_received'];
+            $expiryDate = Carbon::parse($entry['expiry_date'])->toDateString();
 
             if ($existingItem) {
                 $openingStock = $existingItem->opening_stock;
@@ -743,12 +892,13 @@ class AuthController extends Controller
                     'opening_stock' => $openingStock,
                     'quantity_received' => $quantityReceived,
                     'quantity_issued' => $quantityIssued,
+                    'expiry_date' => $this->resolveClinicStockItemExpiryDate($existingItem, $expiryDate),
                     'confirmed_at' => null,
                     'confirmed_by_user_id' => null,
                     'status' => $this->resolveClinicStockStatus($openingStock + $quantityReceived - $quantityIssued),
                 ]);
 
-                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity);
+                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity, $expiryDate);
                 continue;
             }
 
@@ -757,9 +907,10 @@ class AuthController extends Controller
             );
             $entry['opening_stock'] = 0;
             $entry['quantity_issued'] = 0;
+            $entry['expiry_date'] = $expiryDate;
 
             $createdItem = ClinicStockItem::create($entry);
-            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity);
+            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity, $expiryDate);
         }
 
         return redirect()->route('clinic')->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
@@ -772,7 +923,14 @@ class AuthController extends Controller
         }
 
         $user = Auth::guard('web')->user();
-        $application = AccommodationApplication::with('room')
+
+        if (! $this->canAccessAccommodation($user)) {
+            return redirect()
+                ->route('home')
+                ->with('error', 'Accommodation access is restricted to students and authorized accommodation staff.');
+        }
+
+        $application = AccommodationApplication::with(['room', 'requestedRoom', 'previousRoom', 'admissionProcessedBy', 'reallocationApprovedBy', 'roomReallocatedBy'])
             ->where('user_id', $user->id)
             ->latest('updated_at')
             ->latest('id')
@@ -802,12 +960,18 @@ class AuthController extends Controller
             ));
         }
 
-        if ($user->role === 'warden') {
+        if ($this->canManageAccommodationRooms($user)) {
             $this->ensureDefaultAccommodationRoomsExist();
 
-            $admittedApplications = AccommodationApplication::with(['user', 'room'])
+            $admittedApplications = AccommodationApplication::with(['user', 'room', 'previousRoom', 'admissionProcessedBy', 'reallocationApprovedBy', 'roomReallocatedBy'])
                 ->whereIn('status', $this->occupyingAccommodationStatuses())
                 ->latest()
+                ->get();
+
+            $reallocationRequests = AccommodationApplication::with(['user', 'room', 'requestedRoom', 'admissionProcessedBy'])
+                ->where('reallocation_status', 'pending')
+                ->latest('reallocation_requested_at')
+                ->latest('id')
                 ->get();
 
             $rooms = AccommodationRoom::withCount([
@@ -820,10 +984,19 @@ class AuthController extends Controller
                 ->get()
                 ->groupBy('block_name');
 
-            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms'));
+            $availableRooms = $this->availableAccommodationRooms();
+
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests'));
         }
 
-        return view('accommodation.student', compact('user', 'application'));
+        $availableRooms = $application
+            && in_array($application->status, $this->reallocationEligibleStatuses(), true)
+            ? $this->availableAccommodationRooms($application->id)
+                ->reject(fn (AccommodationRoom $room) => (int) $room->id === (int) $application->accommodation_room_id)
+                ->values()
+            : collect();
+
+        return view('accommodation.student', compact('user', 'application', 'availableRooms'));
     }
 
     public function pendingAdmissions()
@@ -834,7 +1007,7 @@ class AuthController extends Controller
 
         $user = Auth::guard('web')->user();
 
-        if (! in_array($user->role, ['executive', 'warden'], true)) {
+        if (! $this->canManageAccommodationAdmissions($user)) {
             return redirect()->route('accommodation');
         }
 
@@ -843,6 +1016,13 @@ class AuthController extends Controller
         $applications = AccommodationApplication::with('user')
             ->where('status', 'pending')
             ->latest()
+            ->get();
+
+        $decidedApplications = AccommodationApplication::with(['user', 'room', 'admissionProcessedBy'])
+            ->whereIn('status', ['admitted', 'conditional', 'rejected'])
+            ->latest('updated_at')
+            ->latest('id')
+            ->limit(20)
             ->get();
 
         $availableRooms = AccommodationRoom::withCount([
@@ -858,7 +1038,7 @@ class AuthController extends Controller
             })
             ->values();
 
-        return view('accommodation.pending-admissions', compact('user', 'applications', 'availableRooms'));
+        return view('accommodation.pending-admissions', compact('user', 'applications', 'availableRooms', 'decidedApplications'));
     }
 
     public function roomManagement()
@@ -869,7 +1049,7 @@ class AuthController extends Controller
 
         $user = Auth::guard('web')->user();
 
-        if ($user->role !== 'executive') {
+        if (! $this->canViewAccommodationRooms($user)) {
             return redirect()->route('accommodation');
         }
 
@@ -897,8 +1077,8 @@ class AuthController extends Controller
         /** @var User $user */
         $user = Auth::guard('web')->user();
 
-        if ($user->role !== 'executive') {
-            return redirect()->route('accommodation')->with('error', 'Only executive can view accommodation reports.');
+        if (! $this->canGenerateAccommodationReport($user)) {
+            return redirect()->route('accommodation')->with('error', 'Only executive, warden, and SSD Assistant 2 can view accommodation reports.');
         }
 
         $this->ensureDefaultAccommodationRoomsExist();
@@ -918,8 +1098,8 @@ class AuthController extends Controller
         /** @var User $user */
         $user = Auth::guard('web')->user();
 
-        if ($user->role !== 'executive') {
-            return redirect()->route('accommodation')->with('error', 'Only executive can download accommodation reports.');
+        if (! $this->canGenerateAccommodationReport($user)) {
+            return redirect()->route('accommodation')->with('error', 'Only executive, warden, and SSD Assistant 2 can download accommodation reports.');
         }
 
         $this->ensureDefaultAccommodationRoomsExist();
@@ -997,9 +1177,9 @@ class AuthController extends Controller
 
             fputcsv($handle, []);
             fputcsv($handle, ['Selected Year Applications']);
-            fputcsv($handle, ['Student Name', 'Student ID', 'Faculty', 'Programme', 'Status', 'Room', 'Check-In Date', 'Updated']);
+            fputcsv($handle, ['Student Name', 'Student ID', 'Faculty', 'Programme', 'Status', 'Current Room', 'Admission Done By', 'Previous Room', 'Requested Room', 'Reallocation Status', 'Accepted By', 'Reallocated By', 'Reallocation Reason', 'Check-In Date', 'Updated']);
             if ($applications->isEmpty()) {
-                fputcsv($handle, ['No accommodation applications found for this year.', '', '', '', '', '', '', '']);
+                fputcsv($handle, ['No accommodation applications found for this year.', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
             } else {
                 foreach ($applications as $application) {
                     fputcsv($handle, [
@@ -1009,6 +1189,13 @@ class AuthController extends Controller
                         $application->programme,
                         Str::headline($application->status),
                         $this->formatAccommodationRoomLabel($application->room) ?? 'Not assigned',
+                        $this->formatAccommodationUserLabel($application->admissionProcessedBy),
+                        $this->formatAccommodationRoomLabel($application->previousRoom) ?? 'Not recorded',
+                        $this->formatAccommodationRoomLabel($application->requestedRoom) ?? 'Not selected',
+                        $application->reallocation_status ? Str::headline($application->reallocation_status) : 'No reallocation',
+                        $this->formatAccommodationUserLabel($application->reallocationApprovedBy),
+                        $this->formatAccommodationUserLabel($application->roomReallocatedBy),
+                        $application->reallocation_reason ?: 'Not provided',
                         optional($application->check_in_date)->format('Y-m-d') ?? '',
                         optional($application->updated_at)->format('Y-m-d H:i:s') ?? optional($application->created_at)->format('Y-m-d H:i:s') ?? '',
                     ]);
@@ -1202,6 +1389,10 @@ class AuthController extends Controller
             'accommodation_room_id' => $data['status'] === 'admitted' ? $roomId : null,
         ];
 
+        if (Schema::hasColumn('accommodation_applications', 'admission_processed_by_user_id')) {
+            $updatePayload['admission_processed_by_user_id'] = $user->id;
+        }
+
         if (Schema::hasColumn('accommodation_applications', 'rejection_reason')) {
             $updatePayload['rejection_reason'] = $data['status'] === 'rejected'
                 ? trim((string) ($data['rejection_reason'] ?? ''))
@@ -1350,7 +1541,8 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'marital_status' => ['required', 'string', 'max:100'],
             'nationality' => ['required', 'string', 'max:100'],
-            'gender' => ['required', 'in:male,female'],
+            'nationality_other' => ['nullable', 'string', 'max:100', 'required_if:nationality,Other'],
+            'gender' => ['required', 'in:female'],
             'age' => ['required', 'integer', 'min:16', 'max:120'],
             'faculty' => ['required', 'string', 'max:100'],
             'programme' => ['required', 'string', 'max:255'],
@@ -1385,6 +1577,10 @@ class AuthController extends Controller
             'on_chronic_treatment',
         ] as $booleanField) {
             $data[$booleanField] = $request->boolean($booleanField);
+        }
+
+        if ($data['nationality'] === 'Other') {
+            $data['nationality'] = $data['nationality_other'];
         }
 
         if (! $data['has_physical_disability']) {
@@ -1627,6 +1823,176 @@ class AuthController extends Controller
             );
     }
 
+    public function storeRoomReallocationRequest(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if ($user->student_type !== 'new') {
+            return redirect()->route('accommodation')->with('error', 'Only new students can request room reallocation.');
+        }
+
+        $application = AccommodationApplication::with('room')
+            ->where('user_id', $user->id)
+            ->whereIn('status', $this->reallocationEligibleStatuses())
+            ->latest('updated_at')
+            ->latest('id')
+            ->first();
+
+        if (! $application || ! $application->accommodation_room_id) {
+            return redirect()->route('accommodation')->with('error', 'Room reallocation is available only after you have an allocated room.');
+        }
+
+        if ($application->reallocation_status === 'pending') {
+            return redirect()->route('accommodation')->with('error', 'You already have a room reallocation request awaiting warden approval.');
+        }
+
+        $data = $request->validate([
+            'requested_accommodation_room_id' => ['required', 'exists:accommodation_rooms,id'],
+            'reallocation_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $requestedRoomId = (int) $data['requested_accommodation_room_id'];
+
+        if ($requestedRoomId === (int) $application->accommodation_room_id) {
+            return redirect()
+                ->route('accommodation')
+                ->withErrors(['requested_accommodation_room_id' => 'Please choose a different room for reallocation.'])
+                ->withInput();
+        }
+
+        $room = $this->availableAccommodationRooms($application->id)
+            ->firstWhere('id', $requestedRoomId);
+
+        if (! $room) {
+            return redirect()
+                ->route('accommodation')
+                ->withErrors(['requested_accommodation_room_id' => 'The selected room is already full. Please choose another room.'])
+                ->withInput();
+        }
+
+        $application->update([
+            'requested_accommodation_room_id' => $requestedRoomId,
+            'previous_accommodation_room_id' => null,
+            'reallocation_status' => 'pending',
+            'reallocation_reason' => trim((string) ($data['reallocation_reason'] ?? '')) ?: null,
+            'reallocation_requested_at' => now(),
+            'reallocation_decided_at' => null,
+            'reallocation_approved_by_user_id' => null,
+            'room_reallocated_by_user_id' => null,
+        ]);
+
+        return redirect()->route('accommodation')->with('success', 'Room reallocation request submitted to the warden.');
+    }
+
+    public function reallocateRoom(Request $request, AccommodationApplication $application)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canManageAccommodationRooms($user)) {
+            return redirect()->route('accommodation');
+        }
+
+        if (! in_array($application->status, $this->reallocationEligibleStatuses(), true)) {
+            return redirect()->route('accommodation')->with('error', 'Only currently admitted students can be reallocated.');
+        }
+
+        $data = $request->validate([
+            'accommodation_room_id' => ['required', 'exists:accommodation_rooms,id'],
+            'reallocation_reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $roomId = (int) $data['accommodation_room_id'];
+
+        if ($roomId === (int) $application->accommodation_room_id) {
+            return redirect()->route('accommodation')->with('error', 'The student is already allocated to that room.');
+        }
+
+        $room = $this->availableAccommodationRooms($application->id)
+            ->firstWhere('id', $roomId);
+
+        if (! $room) {
+            return redirect()
+                ->route('accommodation')
+                ->withErrors(['accommodation_room_id' => 'The selected room is already full. Please choose another room.'])
+                ->withInput();
+        }
+
+        $application->update([
+            'accommodation_room_id' => $roomId,
+            'previous_accommodation_room_id' => $application->accommodation_room_id,
+            'requested_accommodation_room_id' => null,
+            'reallocation_status' => 'direct',
+            'reallocation_reason' => trim((string) $data['reallocation_reason']),
+            'reallocation_requested_at' => null,
+            'reallocation_decided_at' => now(),
+            'reallocation_approved_by_user_id' => null,
+            'room_reallocated_by_user_id' => $user->id,
+        ]);
+
+        return redirect()->route('accommodation')->with('success', 'Student room reallocated successfully.');
+    }
+
+    public function updateRoomReallocationStatus(Request $request, AccommodationApplication $application)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canManageAccommodationRooms($user)) {
+            return redirect()->route('accommodation');
+        }
+
+        if ($application->reallocation_status !== 'pending' || ! $application->requested_accommodation_room_id) {
+            return redirect()->route('accommodation')->with('error', 'Only pending room reallocation requests can be processed.');
+        }
+
+        $data = $request->validate([
+            'decision' => ['required', 'in:approved,rejected'],
+        ]);
+
+        $payload = [
+            'reallocation_status' => $data['decision'],
+            'reallocation_decided_at' => now(),
+        ];
+
+        if ($data['decision'] === 'approved') {
+            $room = $this->availableAccommodationRooms($application->id)
+                ->firstWhere('id', (int) $application->requested_accommodation_room_id);
+
+            if (! $room) {
+                return redirect()
+                    ->route('accommodation')
+                    ->withErrors(['requested_accommodation_room_id' => 'The requested room is now full. Reject this request or reallocate the student to another available room.'])
+                    ->withInput();
+            }
+
+            $payload['accommodation_room_id'] = $application->requested_accommodation_room_id;
+            $payload['previous_accommodation_room_id'] = $application->accommodation_room_id;
+            $payload['requested_accommodation_room_id'] = null;
+            $payload['reallocation_requested_at'] = null;
+            $payload['reallocation_approved_by_user_id'] = $user->id;
+            $payload['room_reallocated_by_user_id'] = $user->id;
+        }
+
+        $application->update($payload);
+
+        return redirect()
+            ->route('accommodation')
+            ->with('success', $data['decision'] === 'approved'
+                ? 'Room reallocation request approved successfully.'
+                : 'Room reallocation request rejected successfully.');
+    }
+
     public function updateClinicStock(Request $request, ClinicStockItem $item)
     {
         if (!Auth::guard('web')->check()) {
@@ -1644,6 +2010,7 @@ class AuthController extends Controller
             'opening_stock' => ['required', 'integer', 'min:0'],
             'quantity_received' => ['required', 'integer', 'min:0'],
             'quantity_issued' => ['required', 'integer', 'min:0'],
+            'expiry_date' => ['required', 'date', 'after_or_equal:today'],
             'status' => ['required', 'in:pending_review,in_stock,low_stock,out_of_stock'],
         ]);
 
@@ -1654,6 +2021,7 @@ class AuthController extends Controller
             'opening_stock' => $data['opening_stock'],
             'quantity_received' => $data['quantity_received'],
             'quantity_issued' => $data['quantity_issued'],
+            'expiry_date' => Carbon::parse($data['expiry_date'])->toDateString(),
             'confirmed_at' => $data['quantity_received'] > 0 ? null : $item->confirmed_at,
             'confirmed_by_user_id' => $data['quantity_received'] > 0 ? null : $item->confirmed_by_user_id,
             'status' => $this->resolveClinicStockStatus($balance),
@@ -1661,7 +2029,7 @@ class AuthController extends Controller
 
         $newlyRecordedReceived = $data['quantity_received'] - $previousQuantityReceived;
         if ($newlyRecordedReceived > 0) {
-            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived);
+            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived, Carbon::parse($data['expiry_date'])->toDateString());
         }
 
         return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock updated successfully.');
@@ -1908,12 +2276,16 @@ class AuthController extends Controller
             ->latest('clinic_stock_receipts.received_date')
             ->latest('clinic_stock_receipts.id')
             ->get();
+        $reportStockItems = $this->clinicReportAvailableStockItems(
+            ClinicStockItem::query()->orderBy('medicine_name')->get(),
+            $reportType
+        );
         $diseaseUsageGroups = $this->groupClinicUsagesByDisease($stockUsages);
         $diseaseBreakdown = $this->summarizeClinicDiseaseBreakdown($stockUsages);
 
         $fileName = 'clinic-stock-report-' . now()->format('Ymd-His') . '.csv';
 
-        return response()->streamDownload(function () use ($stockReceipts, $diseaseUsageGroups, $diseaseBreakdown, $reportLabel) {
+        return response()->streamDownload(function () use ($stockReceipts, $reportStockItems, $diseaseUsageGroups, $diseaseBreakdown, $reportLabel) {
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, ['Report Period', $reportLabel]);
@@ -1945,6 +2317,23 @@ class AuthController extends Controller
                     $receipt->quantity_received,
                     optional($receipt->received_date)->format('Y-m-d') ?? optional($receipt->created_at)->format('Y-m-d') ?? '',
                 ]);
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Available Stock']);
+            fputcsv($handle, ['Medicine', 'Available Stock', 'Expiry Date', 'Status']);
+
+            if ($reportStockItems->isEmpty()) {
+                fputcsv($handle, ['No available stock found for this report.']);
+            } else {
+                foreach ($reportStockItems as $item) {
+                    fputcsv($handle, [
+                        $item->medicine_name ?: 'Unknown',
+                        $item->balance,
+                        optional($item->expiry_date)->format('Y-m-d') ?? '',
+                        Str::headline(str_replace('_', ' ', $item->status)),
+                    ]);
+                }
             }
 
             fputcsv($handle, []);
@@ -1999,7 +2388,7 @@ class AuthController extends Controller
         $user = Auth::guard('web')->user();
 
         if (! $this->canManageCounselling($user)) {
-            return redirect()->route('counselling')->with('error', 'Only psychologists can download counselling reports.');
+            return redirect()->route('counselling')->with('error', 'Only counselling managers can download counselling reports.');
         }
 
         [
@@ -2053,7 +2442,7 @@ class AuthController extends Controller
             fputcsv($handle, []);
 
             fputcsv($handle, ['Students Who Have Gone For Counselling']);
-            fputcsv($handle, ['Student Name', 'Identity Number', 'Programme', 'Year of Study', 'Session Date', 'Requested On', 'Counsellor Notes']);
+            fputcsv($handle, ['Student Name', 'Identity Number', 'Campus', 'Programme', 'Year of Study', 'Session Date', 'Requested On', 'Counsellor Notes']);
 
             if ($attendedBookings->isEmpty()) {
                 fputcsv($handle, ['No attended counselling sessions found for this report period.']);
@@ -2062,6 +2451,7 @@ class AuthController extends Controller
                     fputcsv($handle, [
                         $booking->student_name,
                         $booking->student_identity_number ?: '-',
+                        $booking->campus ?: '-',
                         $booking->programme ?: '-',
                         $booking->year_of_study ?: '-',
                         $booking->appointment_date?->format('Y-m-d H:i') ?: '-',
@@ -2073,7 +2463,7 @@ class AuthController extends Controller
 
             fputcsv($handle, []);
             fputcsv($handle, ['Pending Sessions']);
-            fputcsv($handle, ['Student Name', 'Identity Number', 'Programme', 'Year of Study', 'Preferred Session', 'Requested On', 'Reason']);
+            fputcsv($handle, ['Student Name', 'Identity Number', 'Campus', 'Programme', 'Year of Study', 'Preferred Session', 'Requested On', 'Reason']);
 
             if ($pendingBookings->isEmpty()) {
                 fputcsv($handle, ['No pending counselling sessions found for this report period.']);
@@ -2087,6 +2477,7 @@ class AuthController extends Controller
                     fputcsv($handle, [
                         $booking->student_name,
                         $booking->student_identity_number ?: '-',
+                        $booking->campus ?: '-',
                         $booking->programme ?: '-',
                         $booking->year_of_study ?: '-',
                         $preferredSession !== '' ? $preferredSession : '-',
@@ -2138,7 +2529,13 @@ class AuthController extends Controller
 
         foreach ($recipients as $recipient) {
             try {
-                $sentMessage = Mail::to($recipient)->send(new AccommodationStatusUpdated($application));
+                $sentMessage = Mail::raw(
+                    $this->accommodationStatusEmailBody($application),
+                    function ($message) use ($recipient, $application) {
+                        $message->to($recipient)
+                            ->subject($this->accommodationStatusEmailSubject($application));
+                    }
+                );
 
                 $submittedRecipients[] = $recipient;
 
@@ -2200,6 +2597,70 @@ class AuthController extends Controller
         return array_values($recipients);
     }
 
+    protected function accommodationStatusEmailSubject(AccommodationApplication $application): string
+    {
+        return match ($application->status) {
+            'admitted' => 'Accommodation Approved',
+            'rejected' => 'Accommodation Rejected',
+            'conditional' => 'Accommodation Application Conditional',
+            default => 'Accommodation Status Updated',
+        };
+    }
+
+    protected function accommodationStatusEmailBody(AccommodationApplication $application): string
+    {
+        $name = $application->full_name ?: 'Student';
+
+        if ($application->status === 'admitted') {
+            $lines = [
+                'Hello ' . $name . ',',
+                '',
+                'Your accommodation application has been approved.',
+            ];
+
+            if ($application->room) {
+                $lines[] = 'Allocated room: ' . $this->formatAccommodationRoomLabel($application->room) . '.';
+            }
+
+            if ($application->check_in_date) {
+                $lines[] = 'Check-in date: ' . $application->check_in_date->format('F j, Y') . '.';
+            }
+
+            $lines[] = '';
+            $lines[] = 'Thank you,';
+            $lines[] = 'SolidCare SSD';
+
+            return implode(PHP_EOL, $lines);
+        }
+
+        if ($application->status === 'rejected') {
+            $lines = [
+                'Hello ' . $name . ',',
+                '',
+                'Your accommodation application has been rejected.',
+            ];
+
+            if ($application->rejection_reason) {
+                $lines[] = 'Reason: ' . $application->rejection_reason;
+            }
+
+            $lines[] = '';
+            $lines[] = 'Thank you,';
+            $lines[] = 'SolidCare SSD';
+
+            return implode(PHP_EOL, $lines);
+        }
+
+        return implode(PHP_EOL, [
+            'Hello ' . $name . ',',
+            '',
+            'Your accommodation application status is now ' . Str::headline($application->status) . '.',
+            '',
+            'Thank you,',
+            'SolidCare SSD',
+        ]);
+    }
+
     protected function formatEmailRecipientList(array $recipients): string
     {
         $recipients = array_values($recipients);
@@ -2230,6 +2691,55 @@ class AuthController extends Controller
     protected function checkoutEligibleStatuses(): array
     {
         return ['admitted', 'checkout_rejected'];
+    }
+
+    protected function canManageAccommodationRooms(User $user): bool
+    {
+        return in_array($user->role, ['warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function canAccessAccommodation(User $user): bool
+    {
+        return $user->role === 'student'
+            || in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function canViewAccommodationRooms(User $user): bool
+    {
+        return in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function canManageAccommodationAdmissions(User $user): bool
+    {
+        return in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function canGenerateAccommodationReport(User $user): bool
+    {
+        return in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function reallocationEligibleStatuses(): array
+    {
+        return ['admitted', 'checkout_rejected'];
+    }
+
+    protected function availableAccommodationRooms(?int $ignoreApplicationId = null)
+    {
+        return AccommodationRoom::withCount([
+                'applications as occupied_beds' => function ($query) use ($ignoreApplicationId) {
+                    $query->whereIn('status', $this->occupyingAccommodationStatuses());
+
+                    if ($ignoreApplicationId) {
+                        $query->where('id', '!=', $ignoreApplicationId);
+                    }
+                },
+            ])
+            ->orderBy('block_name')
+            ->orderBy('room_number')
+            ->get()
+            ->filter(fn (AccommodationRoom $room) => $room->occupied_beds < $room->capacity)
+            ->values();
     }
 
     protected function findExistingAccommodationApplication(User $user, ?string $nationalId = null): ?AccommodationApplication
@@ -2272,6 +2782,34 @@ class AuthController extends Controller
         }
 
         return $room->block_name . '-' . str_pad((string) $room->room_number, 2, '0', STR_PAD_LEFT);
+    }
+
+    protected function formatAccommodationUserLabel(?User $user): string
+    {
+        if (! $user) {
+            return 'Not recorded';
+        }
+
+        return trim(($user->name ?: $user->email) . ' (' . Str::headline($user->role) . ')');
+    }
+
+    protected function yearLeaderYearOptionsForProgramme(mixed $programme): array
+    {
+        if (! is_string($programme) || trim($programme) === '') {
+            return [];
+        }
+
+        $programme = Str::lower($programme);
+
+        $yearCount = match (true) {
+            str_contains($programme, 'certificate') => 2,
+            str_contains($programme, 'diploma') || str_contains($programme, 'associate') => 3,
+            default => 4,
+        };
+
+        return collect(range(1, $yearCount))
+            ->map(fn (int $year) => (string) $year)
+            ->all();
     }
 
     protected function resolveAccommodationReportIntake(?string $requestedIntake = null, $availableIntakes = null): ?string
@@ -2380,7 +2918,15 @@ class AuthController extends Controller
         $currentIntake = $this->resolveAccommodationReportIntake($requestedIntake, $availableIntakes);
 
         $applications = $availableIntakes->isNotEmpty()
-            ? AccommodationApplication::with(['user', 'room'])
+            ? AccommodationApplication::with([
+                'user',
+            'room',
+            'admissionProcessedBy',
+            'requestedRoom',
+            'previousRoom',
+            'reallocationApprovedBy',
+                'roomReallocatedBy',
+            ])
                 ->whereIn('intake', $availableIntakes->all())
                 ->latest('updated_at')
                 ->latest('id')
@@ -2477,6 +3023,7 @@ class AuthController extends Controller
             ])
             ->orderBy('medicine_name')
             ->get();
+        $reportStockItems = $this->clinicReportAvailableStockItems($stockItems, $reportType);
 
         $stockUsagesQuery = ClinicStockUsage::with(['stockItem']);
         $stockReceiptsQuery = ClinicStockReceipt::query()
@@ -2502,6 +3049,7 @@ class AuthController extends Controller
         return view('clinic.executive', compact(
             'user',
             'stockItems',
+            'reportStockItems',
             'stockUsages',
             'stockReceipts',
             'diseaseUsageGroups',
@@ -2530,6 +3078,17 @@ class AuthController extends Controller
         }
     }
 
+    protected function clinicReportAvailableStockItems($stockItems, string $reportType)
+    {
+        if (! in_array($reportType, ['month', 'semester'], true)) {
+            return $stockItems;
+        }
+
+        return $stockItems
+            ->filter(fn (ClinicStockItem $item) => $item->balance > 0)
+            ->values();
+    }
+
     protected function resolveClinicStockStatus(int $balance): string
     {
         if ($balance >= 40) {
@@ -2555,7 +3114,7 @@ class AuthController extends Controller
         ]);
     }
 
-    protected function recordClinicStockReceipt(ClinicStockItem $item, User $user, int $quantityReceived): void
+    protected function recordClinicStockReceipt(ClinicStockItem $item, User $user, int $quantityReceived, string $expiryDate): void
     {
         if ($quantityReceived <= 0) {
             return;
@@ -2566,12 +3125,52 @@ class AuthController extends Controller
             'user_id' => $user->id,
             'quantity_received' => $quantityReceived,
             'received_date' => now()->toDateString(),
+            'expiry_date' => $expiryDate,
         ]);
+    }
+
+    protected function resolveClinicStockItemExpiryDate(ClinicStockItem $item, string $incomingExpiryDate): string
+    {
+        $currentExpiryDate = $item->expiry_date?->toDateString();
+
+        if (! $currentExpiryDate) {
+            return $incomingExpiryDate;
+        }
+
+        return Carbon::parse($currentExpiryDate)->lte(Carbon::parse($incomingExpiryDate))
+            ? $currentExpiryDate
+            : $incomingExpiryDate;
     }
 
     protected function canAccessStudentCounselling(User $user): bool
     {
         return $user->role === 'student' && $user->student_type === 'continuing';
+    }
+
+    protected function notifyStudentOfScheduledCounsellingSession(CounsellingBooking $booking): void
+    {
+        $studentEmail = optional($booking->user)->email;
+
+        if (! is_string($studentEmail) || ! filter_var($studentEmail, FILTER_VALIDATE_EMAIL)) {
+            Log::warning('Counselling session scheduled without a valid student email.', [
+                'booking_id' => $booking->id,
+                'user_id' => $booking->user_id,
+            ]);
+
+            return;
+        }
+
+        try {
+            Mail::to($studentEmail)->send(new CounsellingSessionScheduled($booking));
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            Log::warning('Counselling session notification email could not be sent.', [
+                'booking_id' => $booking->id,
+                'user_id' => $booking->user_id,
+                'student_email' => $studentEmail,
+            ]);
+        }
     }
 
     protected function nationalIdAlreadyRegistered(mixed $nationalId): bool
@@ -2626,7 +3225,7 @@ class AuthController extends Controller
 
     protected function canManageCounselling(User $user): bool
     {
-        return $user->role === 'psychologist';
+        return in_array($user->role, ['psychologist', 'executive'], true);
     }
 
     protected function normalizeCounsellingStatus(?string $status): string
@@ -2641,6 +3240,95 @@ class AuthController extends Controller
     protected function counsellingBookingStatuses(): array
     {
         return ['pending', 'scheduled', 'attended', 'cancelled'];
+    }
+
+    protected function counsellingAppointmentSlotStarts(): array
+    {
+        $starts = [];
+        $minutes = 8 * 60;
+        $closingMinutes = (16 * 60) + 30;
+        $sessionMinutes = 75;
+        $interval = 80;
+
+        while (($minutes + $sessionMinutes) <= $closingMinutes) {
+            $starts[] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+            $minutes += $interval;
+        }
+
+        return $starts;
+    }
+
+    protected function unavailableCounsellingSessionSlots(): array
+    {
+        return CounsellingBooking::query()
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($query) {
+                $query->whereNotNull('appointment_date')
+                    ->orWhere(function ($pendingQuery) {
+                        $pendingQuery
+                            ->where('status', 'pending')
+                            ->whereNotNull('preferred_date')
+                            ->whereNotNull('preferred_time');
+                    });
+            })
+            ->get(['id', 'campus', 'status', 'appointment_date', 'preferred_date', 'preferred_time'])
+            ->flatMap(function (CounsellingBooking $booking) {
+                return $this->counsellingBusySlotStarts($booking);
+            })
+            ->unique(fn (array $slot) => $slot['campus'] . '|' . $slot['value'])
+            ->values()
+            ->all();
+    }
+
+    protected function counsellingBookingSlotConflicts(Carbon $slotStart, ?string $campus, ?int $ignoreBookingId = null): bool
+    {
+        $slotEnd = $slotStart->copy()->addMinutes(75);
+
+        return CounsellingBooking::query()
+            ->where('status', '!=', 'cancelled')
+            ->when($ignoreBookingId, fn ($query) => $query->whereKeyNot($ignoreBookingId))
+            ->where(function ($query) use ($campus) {
+                $query->where('campus', $campus)
+                    ->orWhereNull('campus');
+            })
+            ->where(function ($query) {
+                $query->whereNotNull('appointment_date')
+                    ->orWhere(function ($pendingQuery) {
+                        $pendingQuery
+                            ->where('status', 'pending')
+                            ->whereNotNull('preferred_date')
+                            ->whereNotNull('preferred_time');
+                    });
+            })
+            ->get(['id', 'campus', 'status', 'appointment_date', 'preferred_date', 'preferred_time'])
+            ->flatMap(function (CounsellingBooking $booking) {
+                return $this->counsellingBusySlotStarts($booking);
+            })
+            ->contains(function (array $busySlot) use ($slotStart, $slotEnd) {
+                $busyStart = Carbon::parse($busySlot['value']);
+                $busyEnd = Carbon::parse($busySlot['end']);
+
+                return $slotStart->lt($busyEnd) && $busyStart->lt($slotEnd);
+            });
+    }
+
+    protected function counsellingBusySlotStarts(CounsellingBooking $booking): array
+    {
+        $starts = [];
+
+        if ($booking->appointment_date) {
+            $starts[] = Carbon::parse($booking->appointment_date)->seconds(0);
+        } elseif ($booking->status === 'pending' && $booking->preferred_date && $booking->preferred_time) {
+            $starts[] = Carbon::parse($booking->preferred_date->format('Y-m-d') . ' ' . $booking->preferred_time)->seconds(0);
+        }
+
+        return collect($starts)
+            ->map(fn (Carbon $start) => [
+                'campus' => (string) $booking->campus,
+                'value' => $start->format('Y-m-d\TH:i'),
+                'end' => $start->copy()->addMinutes(75)->format('Y-m-d\TH:i'),
+            ])
+            ->all();
     }
 
     protected function extractEmergencyCounsellingReply(array $response): ?string

@@ -5,6 +5,8 @@ namespace Tests\Feature\Auth;
 use App\Models\Admin;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class LoginTest extends TestCase
@@ -16,6 +18,7 @@ class LoginTest extends TestCase
         $user = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',
@@ -37,6 +40,7 @@ class LoginTest extends TestCase
         $user = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',
@@ -89,6 +93,7 @@ class LoginTest extends TestCase
         $user = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',
@@ -108,6 +113,8 @@ class LoginTest extends TestCase
 
     public function test_registration_logs_in_the_student_and_redirects_home(): void
     {
+        Notification::fake();
+
         $response = $this->post('/register', [
             'name' => 'Nthati Lehana',
             'email' => '  LehanaNthati@Gmail.com  ',
@@ -133,10 +140,13 @@ class LoginTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertSessionHas('status', 'Account created successfully. Welcome to SolidCare SSD.');
+        Notification::assertNothingSent();
     }
 
     public function test_registration_does_not_require_admin_email_approval(): void
     {
+        Notification::fake();
+
         $response = $this->post('/register', [
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
@@ -157,10 +167,13 @@ class LoginTest extends TestCase
         ]);
         $this->assertDatabaseCount('students', 1);
         $this->assertAuthenticated();
+        Notification::assertNothingSent();
     }
 
-    public function test_admin_can_create_a_student_user_without_email_approval_flow(): void
+    public function test_admin_can_create_a_staff_user_without_email_verification_flow(): void
     {
+        Notification::fake();
+
         $admin = Admin::create([
             'name' => 'SSD Admin',
             'email' => 'admin@limkokwing.ac.ls',
@@ -168,23 +181,181 @@ class LoginTest extends TestCase
         ]);
 
         $response = $this->actingAs($admin, 'admin')->post(route('admin.users.store'), [
-            'name' => 'Pending Student',
-            'email' => '  Student@Example.com  ',
+            'name' => 'Pending Staff',
+            'email' => '  Staff@Example.com  ',
             'password' => 'temporary123',
             'password_confirmation' => 'temporary123',
-            'role' => 'student',
+            'role' => 'psychologist',
         ]);
 
-        $response->assertRedirect(route('admin.users.create'));
+        $response->assertRedirect(route('dashboard', ['create_user' => 1]));
         $response->assertSessionHas('success', 'User created successfully. Temporary password: temporary123 (expires in 2 days).');
 
         $this->assertDatabaseHas('users', [
-            'name' => 'Pending Student',
-            'email' => 'student@example.com',
-            'role' => 'student',
-            'student_type' => null,
+            'name' => 'Pending Staff',
+            'email' => 'staff@example.com',
+            'role' => 'psychologist',
             'password_temporary' => true,
         ]);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_admin_members_report_shows_active_temporary_passwords(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $this->actingAs($admin, 'admin')->post(route('admin.users.store'), [
+            'name' => 'Pending Staff',
+            'email' => 'staff@example.com',
+            'password' => 'temporary123',
+            'password_confirmation' => 'temporary123',
+            'role' => 'psychologist',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->get(route('dashboard', ['members_report' => 1]));
+
+        $response->assertOk();
+        $response->assertSee('Temporary Password');
+        $response->assertSee('temporary123');
+        $response->assertSee('Expires');
+    }
+
+    public function test_admin_can_reissue_active_temporary_passwords_created_before_display_was_enabled(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $member = User::create([
+            'name' => 'Old Temporary Staff',
+            'email' => 'old-temp@example.com',
+            'password' => 'old-temporary123',
+            'role' => 'warden',
+            'password_temporary' => true,
+            'temporary_password_expires_at' => now()->addDay(),
+            'temporary_password_plain' => null,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('dashboard', ['members_report' => 1]))
+            ->assertOk()
+            ->assertSee('Reissue visible password');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->post(route('admin.users.temporary-password.reissue', $member));
+
+        $response->assertRedirect(route('dashboard', ['members_report' => 1]));
+        $response->assertSessionHas('success');
+
+        $member->refresh();
+
+        $this->assertNotNull($member->temporary_password_plain);
+        $this->assertTrue(Hash::check($member->temporary_password_plain, $member->password));
+        $this->assertTrue($member->temporary_password_expires_at->isFuture());
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('dashboard', ['members_report' => 1]))
+            ->assertOk()
+            ->assertSee($member->temporary_password_plain)
+            ->assertDontSee('Reissue visible password');
+    }
+
+    public function test_admin_can_create_yearleader_with_programme_and_numeric_year(): void
+    {
+        Notification::fake();
+
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->post(route('admin.users.store'), [
+            'name' => 'Year Leader',
+            'email' => 'yearleader@example.com',
+            'password' => 'temporary123',
+            'password_confirmation' => 'temporary123',
+            'role' => 'yearleader',
+            'faculty' => 'Faculty of Communication and Information Technology',
+            'class' => 'BSc (Hons) in Information Technology',
+            'year' => '4',
+        ]);
+
+        $response->assertRedirect(route('dashboard', ['create_user' => 1]));
+
+        $this->assertDatabaseHas('year_leaders', [
+            'faculty' => 'Faculty of Communication and Information Technology',
+            'class' => 'BSc (Hons) in Information Technology',
+            'year' => '4',
+        ]);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_admin_cannot_create_yearleader_with_year_outside_programme_length(): void
+    {
+        Notification::fake();
+
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->from(route('dashboard', ['create_user' => 1]))
+            ->post(route('admin.users.store'), [
+                'name' => 'Diploma Year Leader',
+                'email' => 'diploma-yearleader@example.com',
+                'password' => 'temporary123',
+                'password_confirmation' => 'temporary123',
+                'role' => 'yearleader',
+                'faculty' => 'Faculty of Creativity in Tourism and Hospitality',
+                'class' => 'Diploma in Hotel Management',
+                'year' => '4',
+            ]);
+
+        $response
+            ->assertRedirect(route('dashboard', ['create_user' => 1]))
+            ->assertSessionHasErrors('year');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'diploma-yearleader@example.com',
+        ]);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_registration_does_not_send_verification_email_or_block_home_access(): void
+    {
+        Notification::fake();
+
+        $response = $this->post('/register', [
+            'name' => 'Nthati Lehana',
+            'email' => 'missing@example.invalid',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('home'));
+        $this->assertDatabaseHas('users', [
+            'email' => 'missing@example.invalid',
+            'email_verified_at' => null,
+        ]);
+
+        $homeResponse = $this->get(route('home'));
+        $homeResponse->assertOk();
+        Notification::assertNothingSent();
     }
 
     public function test_new_student_registration_is_denied_when_national_id_already_exists(): void

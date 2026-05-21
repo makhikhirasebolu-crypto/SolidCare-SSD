@@ -1,7 +1,7 @@
 @extends('layouts.student')
 
-@section('title', 'Psychologist Counselling Desk')
-@section('portal_label', 'Psychologist Counselling Desk')
+@section('title', 'Counselling Management Desk')
+@section('portal_label', 'Counselling Management Desk')
 
 @push('styles')
 <style>
@@ -221,6 +221,57 @@
         background: #e5e7eb;
         border-color: #9ca3af;
         color: #374151;
+    }
+
+    .slot-picker {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+    }
+
+    .slot-picker-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+        gap: 0.65rem;
+    }
+
+    .slot-button {
+        border: 1px solid #c9d9ef;
+        border-radius: 14px;
+        padding: 0.75rem 0.8rem;
+        background: #f8fbff;
+        color: #17324d;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: center;
+    }
+
+    .slot-button:hover,
+    .slot-button.is-selected {
+        background: #dbeafe;
+        border-color: #1d7ef2;
+        color: #0f4fa8;
+    }
+
+    .slot-button.is-booked,
+    .slot-button:disabled {
+        background: #e5e7eb;
+        border-color: #9ca3af;
+        color: #6b7280;
+        cursor: not-allowed;
+    }
+
+    .slot-button.is-current {
+        outline: 2px solid #16a34a;
+        outline-offset: 2px;
+    }
+
+    .slot-summary {
+        border-radius: 14px;
+        padding: 0.8rem 0.95rem;
+        background: #eef6ff;
+        color: #17324d;
+        font-weight: 700;
     }
 
     .booking-conflict {
@@ -569,6 +620,7 @@
                 'booking_id' => (string) $booking->id,
                 'status' => $normalizeStatus($booking->status),
                 'value' => $booking->appointment_date->format('Y-m-d\TH:i'),
+                'end' => $booking->appointment_date->copy()->addMinutes(75)->format('Y-m-d\TH:i'),
                 'display' => $booking->appointment_date->format('d-m-Y h:i A'),
                 'student' => $booking->student_name,
             ];
@@ -768,7 +820,8 @@
                                     <tr>
                                         <td>
                                             <strong>{{ $booking->student_name }}</strong><br>
-                                            <span class="report-note">ID {{ $booking->student_identity_number ?: '-' }}</span>
+                                            <span class="report-note">ID {{ $booking->student_identity_number ?: '-' }}</span><br>
+                                            <span class="report-note">{{ $booking->campus ?: '-' }}</span>
                                         </td>
                                         <td>
                                             {{ $booking->programme ?: '-' }}<br>
@@ -812,7 +865,8 @@
                                     <tr>
                                         <td>
                                             <strong>{{ $booking->student_name }}</strong><br>
-                                            <span class="report-note">{{ $booking->programme ?: '-' }} / Year {{ $booking->year_of_study ?: '-' }}</span>
+                                            <span class="report-note">{{ $booking->programme ?: '-' }} / Year {{ $booking->year_of_study ?: '-' }}</span><br>
+                                            <span class="report-note">{{ $booking->campus ?: '-' }}</span>
                                         </td>
                                         <td>
                                             {{ $booking->preferred_date ? $booking->preferred_date->format('d-m-Y') : '-' }}
@@ -844,6 +898,7 @@
                     class="booked-slot booked-slot-{{ $slot['status'] }}"
                     data-booking-id="{{ $slot['booking_id'] }}"
                     data-slot-value="{{ $slot['value'] }}"
+                    data-slot-end="{{ $slot['end'] }}"
                 >
                     {{ $slot['display'] }} &bull; {{ $slot['student'] }} &bull; {{ ucfirst($slot['status']) }}
                 </span>
@@ -868,6 +923,7 @@
                 $appointmentDateValue = $isActiveBooking
                     ? old('appointment_date')
                     : optional($booking->appointment_date)->format('Y-m-d\TH:i');
+                $appointmentDateOnly = $appointmentDateValue ? substr($appointmentDateValue, 0, 10) : '';
                 $statusValue = $isActiveBooking ? old('status', $statusKey) : $statusKey;
                 $notesValue = $isActiveBooking ? old('counsellor_notes', $booking->counsellor_notes) : $booking->counsellor_notes;
             @endphp
@@ -893,6 +949,10 @@
                     <div class="detail-block">
                         <strong>Sex</strong>
                         <span>{{ $booking->sex ?: '-' }}</span>
+                    </div>
+                    <div class="detail-block">
+                        <strong>Campus</strong>
+                        <span>{{ $booking->campus ?: '-' }}</span>
                     </div>
                     <div class="detail-block">
                         <strong>Program</strong>
@@ -921,7 +981,13 @@
                     </div>
                     <div class="detail-block">
                         <strong>Scheduled Date and Time</strong>
-                        <span>{{ $booking->appointment_date ? $booking->appointment_date->format('d-m-Y h:i A') : 'Not scheduled yet' }}</span>
+                        <button
+                            type="button"
+                            class="slot-button js-jump-to-scheduler"
+                            data-booking-id="{{ $booking->id }}"
+                        >
+                            {{ $booking->appointment_date ? $booking->appointment_date->format('d-m-Y h:i A') : 'Not scheduled yet' }}
+                        </button>
                     </div>
                 </div>
 
@@ -943,17 +1009,35 @@
                         <div>
                             <label for="appointment-date-{{ $booking->id }}" class="desk-label">Appointment date and time</label>
                             <input
-                                type="datetime-local"
+                                type="date"
+                                id="appointment-calendar-{{ $booking->id }}"
+                                class="form-control desk-input js-appointment-date"
+                                min="{{ now()->toDateString() }}"
+                                value="{{ $appointmentDateOnly }}"
+                                data-booking-id="{{ $booking->id }}"
+                                data-slot-grid="appointment-slots-{{ $booking->id }}"
+                                data-hidden-input="appointment-date-{{ $booking->id }}"
+                                data-summary="appointment-summary-{{ $booking->id }}"
+                                data-conflict-target="booking-conflict-{{ $booking->id }}"
+                            >
+                            <input
+                                type="hidden"
                                 name="appointment_date"
                                 id="appointment-date-{{ $booking->id }}"
-                                class="form-control desk-input js-appointment-input"
+                                class="js-appointment-input"
                                 value="{{ $appointmentDateValue }}"
                                 data-booking-id="{{ $booking->id }}"
                                 data-conflict-target="booking-conflict-{{ $booking->id }}"
                             >
-                            <div class="field-note mt-2">Set the exact appointment date and time here. If the chosen slot is already booked, it will turn grey and cannot be saved.</div>
+                            <div class="slot-picker">
+                                <div class="slot-summary" id="appointment-summary-{{ $booking->id }}">
+                                    {{ $booking->appointment_date ? 'Selected: ' . $booking->appointment_date->format('d-m-Y h:i A') : 'Choose a date to see available 1 hour 15 minute sessions.' }}
+                                </div>
+                                <div class="slot-picker-grid js-slot-picker" id="appointment-slots-{{ $booking->id }}"></div>
+                            </div>
+                            <div class="field-note mt-2">Choose a date, then select a working-hour slot. Each counselling session takes 1 hour 15 minutes, and booked or overlapping slots are greyed out.</div>
                             <div class="booking-conflict mt-2" id="booking-conflict-{{ $booking->id }}">
-                                This date and time is already booked. Choose another slot.
+                                This session overlaps with another booked appointment. Choose another slot.
                             </div>
                         </div>
                     </div>
@@ -984,9 +1068,182 @@
         const reportMonthFields = document.querySelectorAll('.report-month-fields');
         const slotChips = Array.from(document.querySelectorAll('.booked-slot[data-slot-value]'));
         const appointmentInputs = document.querySelectorAll('.js-appointment-input');
+        const appointmentDateInputs = document.querySelectorAll('.js-appointment-date');
+        const jumpButtons = document.querySelectorAll('.js-jump-to-scheduler');
+        const sessionMinutes = 75;
+        const slotGapMinutes = 5;
+        const slotIntervalMinutes = sessionMinutes + slotGapMinutes;
+        const firstSlotMinutes = 8 * 60;
+        const closingMinutes = (16 * 60) + 30;
 
         const normalizeValue = function (value) {
             return (value || '').slice(0, 16);
+        };
+
+        const toMinutes = function (timeValue) {
+            const parts = String(timeValue || '').split(':').map(Number);
+            return (parts[0] * 60) + parts[1];
+        };
+
+        const toDisplayTime = function (timeValue) {
+            const [hourValue, minuteValue] = String(timeValue).split(':').map(Number);
+            const suffix = hourValue >= 12 ? 'PM' : 'AM';
+            const hour = hourValue % 12 || 12;
+
+            return String(hour) + ':' + String(minuteValue).padStart(2, '0') + ' ' + suffix;
+        };
+
+        const fromMinutes = function (minutesValue) {
+            const hour = Math.floor(minutesValue / 60);
+            const minute = minutesValue % 60;
+
+            return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        };
+
+        const buildSlotStarts = function () {
+            const starts = [];
+
+            for (let minutesValue = firstSlotMinutes; minutesValue + sessionMinutes <= closingMinutes; minutesValue += slotIntervalMinutes) {
+                starts.push(fromMinutes(minutesValue));
+            }
+
+            return starts;
+        };
+
+        const toDisplayDateTime = function (value) {
+            const normalized = normalizeValue(value);
+
+            if (!normalized) {
+                return 'Choose a date to see available 1 hour 15 minute sessions.';
+            }
+
+            const [datePart, timePart] = normalized.split('T');
+            const [year, month, day] = datePart.split('-');
+
+            return 'Selected: ' + day + '-' + month + '-' + year + ' ' + toDisplayTime(timePart);
+        };
+
+        const addMinutesToSlot = function (dateValue, timeValue, minutesToAdd) {
+            const date = new Date(dateValue + 'T' + timeValue + ':00');
+            date.setMinutes(date.getMinutes() + minutesToAdd);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+
+            return year + '-' + month + '-' + day + 'T' + hour + ':' + minute;
+        };
+
+        const rangesOverlap = function (leftStart, leftEnd, rightStart, rightEnd) {
+            return leftStart < rightEnd && rightStart < leftEnd;
+        };
+
+        const isPastSlot = function (slotValue) {
+            return new Date(slotValue + ':00') < new Date();
+        };
+
+        const slotHasConflict = function (bookingId, slotValue, slotEnd) {
+            return slotChips.some(function (chip) {
+                if (chip.dataset.bookingId === bookingId) {
+                    return false;
+                }
+
+                return rangesOverlap(
+                    slotValue,
+                    slotEnd,
+                    normalizeValue(chip.dataset.slotValue),
+                    normalizeValue(chip.dataset.slotEnd)
+                );
+            });
+        };
+
+        const syncHiddenInputState = function (input) {
+            const bookingId = input.dataset.bookingId;
+            const conflictTarget = document.getElementById(input.dataset.conflictTarget);
+            const selectedValue = normalizeValue(input.value);
+            const selectedEnd = selectedValue ? addMinutesToSlot(selectedValue.slice(0, 10), selectedValue.slice(11, 16), sessionMinutes) : '';
+            let hasConflict = false;
+
+            slotChips.forEach(function (chip) {
+                if (chip.dataset.selectedFor === bookingId) {
+                    chip.classList.remove('is-selected');
+                    chip.dataset.selectedFor = '';
+                }
+
+                if (selectedValue !== '' && chip.dataset.bookingId !== bookingId && rangesOverlap(selectedValue, selectedEnd, normalizeValue(chip.dataset.slotValue), normalizeValue(chip.dataset.slotEnd))) {
+                    chip.classList.add('is-selected');
+                    chip.dataset.selectedFor = bookingId;
+                    hasConflict = true;
+                }
+            });
+
+            input.setCustomValidity(hasConflict ? 'This session overlaps with another booked appointment.' : '');
+
+            if (conflictTarget) {
+                conflictTarget.classList.toggle('is-visible', hasConflict);
+            }
+        };
+
+        const renderSlotPicker = function (dateInput) {
+            const bookingId = dateInput.dataset.bookingId;
+            const grid = document.getElementById(dateInput.dataset.slotGrid);
+            const hiddenInput = document.getElementById(dateInput.dataset.hiddenInput);
+            const summary = document.getElementById(dateInput.dataset.summary);
+
+            if (!grid || !hiddenInput || !summary) {
+                return;
+            }
+
+            grid.innerHTML = '';
+
+            if (!dateInput.value) {
+                summary.textContent = toDisplayDateTime(hiddenInput.value);
+                syncHiddenInputState(hiddenInput);
+                return;
+            }
+
+            const selectedValue = normalizeValue(hiddenInput.value);
+
+            buildSlotStarts().forEach(function (timeValue) {
+                const slotValue = dateInput.value + 'T' + timeValue;
+                const slotEnd = addMinutesToSlot(dateInput.value, timeValue, sessionMinutes);
+                const button = document.createElement('button');
+                const hasConflict = slotHasConflict(bookingId, slotValue, slotEnd);
+                const isPast = isPastSlot(slotValue);
+                const isSelected = selectedValue === slotValue;
+
+                button.type = 'button';
+                button.className = 'slot-button';
+                button.textContent = toDisplayTime(timeValue);
+                button.dataset.slotValue = slotValue;
+                button.dataset.slotEnd = slotEnd;
+
+                if (hasConflict) {
+                    button.classList.add('is-booked');
+                    button.title = 'This time overlaps another booked session.';
+                }
+
+                if (isSelected) {
+                    button.classList.add('is-selected', 'is-current');
+                }
+
+                if (hasConflict || isPast) {
+                    button.disabled = true;
+                }
+
+                button.addEventListener('click', function () {
+                    hiddenInput.value = slotValue;
+                    summary.textContent = toDisplayDateTime(slotValue);
+                    renderSlotPicker(dateInput);
+                    syncHiddenInputState(hiddenInput);
+                });
+
+                grid.appendChild(button);
+            });
+
+            summary.textContent = toDisplayDateTime(hiddenInput.value);
+            syncHiddenInputState(hiddenInput);
         };
 
         const updateReportFieldVisibility = function () {
@@ -1012,38 +1269,37 @@
             updateReportFieldVisibility();
         }
 
-        appointmentInputs.forEach(function (input) {
-            const bookingId = input.dataset.bookingId;
-            const conflictTarget = document.getElementById(input.dataset.conflictTarget);
+        appointmentDateInputs.forEach(function (dateInput) {
+            dateInput.addEventListener('change', function () {
+                const hiddenInput = document.getElementById(dateInput.dataset.hiddenInput);
 
-            const syncConflictState = function () {
-                const selectedValue = normalizeValue(input.value);
-                let hasConflict = false;
-
-                slotChips.forEach(function (chip) {
-                    if (chip.dataset.selectedFor === bookingId) {
-                        chip.classList.remove('is-selected');
-                        chip.dataset.selectedFor = '';
-                    }
-
-                    if (selectedValue !== '' && chip.dataset.bookingId !== bookingId && chip.dataset.slotValue === selectedValue) {
-                        chip.classList.add('is-selected');
-                        chip.dataset.selectedFor = bookingId;
-                        hasConflict = true;
-                    }
-                });
-
-                input.classList.toggle('is-booked-choice', hasConflict);
-                input.setCustomValidity(hasConflict ? 'This date and time is already booked.' : '');
-
-                if (conflictTarget) {
-                    conflictTarget.classList.toggle('is-visible', hasConflict);
+                if (hiddenInput && normalizeValue(hiddenInput.value).slice(0, 10) !== dateInput.value) {
+                    hiddenInput.value = '';
                 }
-            };
 
-            input.addEventListener('input', syncConflictState);
-            input.addEventListener('change', syncConflictState);
-            syncConflictState();
+                renderSlotPicker(dateInput);
+            });
+
+            renderSlotPicker(dateInput);
+        });
+
+        appointmentInputs.forEach(function (input) {
+            input.addEventListener('change', function () {
+                syncHiddenInputState(input);
+            });
+
+            syncHiddenInputState(input);
+        });
+
+        jumpButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const dateInput = document.getElementById('appointment-calendar-' + button.dataset.bookingId);
+
+                if (dateInput) {
+                    dateInput.focus();
+                    dateInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
         });
     });
 </script>

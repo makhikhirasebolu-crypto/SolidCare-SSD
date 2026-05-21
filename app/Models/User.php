@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -21,6 +20,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'email_verified_at',
         'password',
         'role',
         'student_type',
@@ -30,6 +30,7 @@ class User extends Authenticatable
         'disability_details',
         'password_temporary',
         'temporary_password_expires_at',
+        'temporary_password_plain',
     ];
 
     /**
@@ -39,6 +40,7 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'temporary_password_plain',
         'remember_token',
     ];
 
@@ -54,6 +56,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'password_temporary' => 'boolean',
             'temporary_password_expires_at' => 'datetime',
+            'temporary_password_plain' => 'encrypted',
             'role' => 'string',
             'student_type' => 'string',
             'student_id' => 'string',

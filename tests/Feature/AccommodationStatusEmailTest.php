@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Mail\AccommodationStatusUpdated;
 use App\Models\AccommodationApplication;
 use App\Models\AccommodationRoom;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -18,8 +18,6 @@ class AccommodationStatusEmailTest extends TestCase
 
     public function test_executive_admitting_student_sends_accommodation_status_email(): void
     {
-        Mail::fake();
-
         [$executive, $application] = $this->createExecutiveAndApplication();
         $room = AccommodationRoom::create([
             'block_name' => 'A',
@@ -34,36 +32,22 @@ class AccommodationStatusEmailTest extends TestCase
 
         $response->assertRedirect(route('student.accommodation.pending'));
         $response->assertSessionHas('success', 'Application status updated to Admitted.');
-        $response->assertSessionHas(
-            'accommodation_email_status',
-            $this->statusEmailMessage('admitted', [$application->email, 'student.account@example.com'])
-        );
+        $this->assertSessionHasStatusEmail($response, 'admitted', [$application->email, 'student.account@example.com']);
 
         $this->assertDatabaseHas('accommodation_applications', [
             'id' => $application->id,
             'status' => 'admitted',
             'accommodation_room_id' => $room->id,
+            'admission_processed_by_user_id' => $executive->id,
         ]);
 
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $room) {
-            return $mail->hasTo($application->email)
-                && $mail->application->id === $application->id
-                && $mail->application->status === 'admitted'
-                && optional($mail->application->room)->id === $room->id;
-        });
-
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $room) {
-            return $mail->hasTo('student.account@example.com')
-                && $mail->application->id === $application->id
-                && $mail->application->status === 'admitted'
-                && optional($mail->application->room)->id === $room->id;
-        });
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Your accommodation application has been approved.');
+        $this->assertRawAccommodationEmailSent('student.account@example.com', 'Accommodation Approved', 'Your accommodation application has been approved.');
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated room: A-04.');
     }
 
     public function test_executive_can_resend_accommodation_status_email_for_a_decided_application(): void
     {
-        Mail::fake();
-
         [$executive, $application] = $this->createExecutiveAndApplication();
         $room = AccommodationRoom::create([
             'block_name' => 'B',
@@ -79,24 +63,33 @@ class AccommodationStatusEmailTest extends TestCase
         $response = $this->actingAs($executive)->post(route('student.accommodation.resend-email', $application));
 
         $response->assertRedirect(route('student.accommodation.pending'));
-        $response->assertSessionHas(
-            'accommodation_email_status',
-            $this->statusEmailMessage('admitted', [$application->email, 'student.account@example.com'])
-        );
+        $this->assertSessionHasStatusEmail($response, 'admitted', [$application->email, 'student.account@example.com']);
 
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $room) {
-            return $mail->hasTo($application->email)
-                && $mail->application->id === $application->id
-                && $mail->application->status === 'admitted'
-                && optional($mail->application->room)->id === $room->id;
-        });
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Your accommodation application has been approved.');
+        $this->assertRawAccommodationEmailSent('student.account@example.com', 'Accommodation Approved', 'Your accommodation application has been approved.');
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated room: B-07.');
+    }
 
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $room) {
-            return $mail->hasTo('student.account@example.com')
-                && $mail->application->id === $application->id
-                && $mail->application->status === 'admitted'
-                && optional($mail->application->room)->id === $room->id;
-        });
+    public function test_pending_admissions_page_shows_recent_decisions_with_staff_audit(): void
+    {
+        [$executive, $application] = $this->createExecutiveAndApplication();
+
+        $this->actingAs($executive)->post(route('student.accommodation.status', $application), [
+            'status' => 'rejected',
+            'rejection_reason' => 'No rooms are currently available for this applicant.',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('student.accommodation.pending'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Recent Admission Decisions')
+            ->assertSee($application->full_name)
+            ->assertSee('Decision Done By')
+            ->assertSee('Executive User')
+            ->assertSee('Executive')
+            ->assertDontSee('Resend Email')
+            ->assertDontSee(route('student.accommodation.resend-email', $application), false);
     }
 
     public function test_executive_cannot_resend_email_for_pending_application(): void
@@ -116,8 +109,6 @@ class AccommodationStatusEmailTest extends TestCase
     #[DataProvider('nonAdmittedStatusesProvider')]
     public function test_executive_status_updates_send_accommodation_status_email_for_non_admitted_outcomes(string $status): void
     {
-        Mail::fake();
-
         [$executive, $application] = $this->createExecutiveAndApplication();
 
         $payload = [
@@ -132,28 +123,24 @@ class AccommodationStatusEmailTest extends TestCase
 
         $response->assertRedirect(route('student.accommodation.pending'));
         $response->assertSessionHas('success', 'Application status updated to ' . ucfirst($status) . '.');
-        $response->assertSessionHas(
-            'accommodation_email_status',
-            $this->statusEmailMessage($status, [$application->email, 'student.account@example.com'])
-        );
+        $this->assertSessionHasStatusEmail($response, $status, [$application->email, 'student.account@example.com']);
 
         $this->assertDatabaseHas('accommodation_applications', [
             'id' => $application->id,
             'status' => $status,
             'accommodation_room_id' => null,
+            'admission_processed_by_user_id' => $executive->id,
         ]);
 
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $status) {
-            return $mail->hasTo($application->email)
-                && $mail->application->id === $application->id
-                && $mail->application->status === $status;
-        });
+        $expectedSubject = $status === 'rejected'
+            ? 'Accommodation Rejected'
+            : 'Accommodation Application Conditional';
+        $expectedBody = $status === 'rejected'
+            ? 'Your accommodation application has been rejected.'
+            : 'Your accommodation application status is now Conditional.';
 
-        Mail::assertSent(AccommodationStatusUpdated::class, function (AccommodationStatusUpdated $mail) use ($application, $status) {
-            return $mail->hasTo('student.account@example.com')
-                && $mail->application->id === $application->id
-                && $mail->application->status === $status;
-        });
+        $this->assertRawAccommodationEmailSent($application->email, $expectedSubject, $expectedBody);
+        $this->assertRawAccommodationEmailSent('student.account@example.com', $expectedSubject, $expectedBody);
     }
 
     public static function nonAdmittedStatusesProvider(): array
@@ -205,5 +192,34 @@ class AccommodationStatusEmailTest extends TestCase
     private function statusEmailMessage(string $status, array $recipients): string
     {
         return 'Accommodation status updated to ' . Str::headline($status) . '. Email sent to ' . implode(' and ', $recipients) . '.';
+    }
+
+    private function assertSessionHasStatusEmail($response, string $status, array $recipients): void
+    {
+        $expectedStart = $this->statusEmailMessage($status, $recipients);
+
+        $response->assertSessionHas('accommodation_email_status');
+
+        $actual = session('accommodation_email_status');
+
+        $this->assertIsString($actual);
+        $this->assertStringStartsWith($expectedStart, $actual);
+    }
+
+    private function assertRawAccommodationEmailSent(string $recipient, string $subject, string $bodyExcerpt): void
+    {
+        $transport = app('mailer')->getSymfonyTransport();
+
+        $this->assertInstanceOf(ArrayTransport::class, $transport);
+
+        $matched = $transport->messages()->contains(function ($sentMessage) use ($recipient, $subject, $bodyExcerpt) {
+            $message = $sentMessage->getOriginalMessage();
+
+            return collect($message->getTo())->contains(fn ($address) => $address->getAddress() === $recipient)
+                && $message->getSubject() === $subject
+                && str_contains((string) $message->getTextBody(), $bodyExcerpt);
+        });
+
+        $this->assertTrue($matched, "Expected raw email to {$recipient} with subject {$subject} was not sent.");
     }
 }

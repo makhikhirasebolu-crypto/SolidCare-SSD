@@ -14,11 +14,17 @@ class ClinicStockReceipt extends Model
         'user_id',
         'quantity_received',
         'received_date',
+        'expiry_date',
+        'expiry_month_notice_sent_at',
+        'expiry_week_notice_sent_at',
     ];
 
     protected $casts = [
         'quantity_received' => 'integer',
         'received_date' => 'date',
+        'expiry_date' => 'date',
+        'expiry_month_notice_sent_at' => 'datetime',
+        'expiry_week_notice_sent_at' => 'datetime',
     ];
 
     public function stockItem()

@@ -14,6 +14,7 @@ class ClinicStockItem extends Model
         'opening_stock',
         'quantity_received',
         'quantity_issued',
+        'expiry_date',
         'status',
         'confirmed_at',
         'confirmed_by_user_id',
@@ -23,6 +24,7 @@ class ClinicStockItem extends Model
         'opening_stock' => 'integer',
         'quantity_received' => 'integer',
         'quantity_issued' => 'integer',
+        'expiry_date' => 'date',
         'confirmed_at' => 'datetime',
     ];
 

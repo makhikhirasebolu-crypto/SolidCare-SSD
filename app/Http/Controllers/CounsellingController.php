@@ -99,7 +99,7 @@ class CounsellingController extends Controller
             'programme' => ['required', 'string', 'max:255'],
             'year_of_study' => ['required', 'string', 'max:50'],
             'preferred_date' => ['required', 'date', 'after_or_equal:today'],
-            'preferred_time' => ['required', 'date_format:H:i'],
+            'preferred_time' => ['required', 'date_format:H:i', 'after_or_equal:08:00', 'before_or_equal:16:30'],
         ]);
 
         CounsellingBooking::create([
@@ -128,7 +128,7 @@ class CounsellingController extends Controller
         $user = Auth::guard('web')->user();
 
         if (!$this->canManageCounselling($user)) {
-            return redirect()->route('home')->with('error', 'Only psychologists can manage counselling appointments.');
+            return redirect()->route('home')->with('error', 'Only counselling managers can manage counselling appointments.');
         }
 
         $data = $request->validate([
@@ -147,6 +147,31 @@ class CounsellingController extends Controller
             $resolvedStatus = 'scheduled';
         }
 
+        if ($resolvedAppointmentDate) {
+            $slotStart = $resolvedAppointmentDate->copy();
+            $slotEnd = $slotStart->copy()->addMinutes(75);
+            $workdayStart = $slotStart->copy()->setTime(8, 0);
+            $workdayEnd = $slotStart->copy()->setTime(16, 30);
+
+            if ($slotStart->isPast()) {
+                return back()
+                    ->withErrors([
+                        'appointment_date' => 'The appointment date field must be a date after or equal to today.',
+                    ])
+                    ->withInput();
+            }
+
+            $validSlotStarts = $this->counsellingAppointmentSlotStarts();
+
+            if (! in_array($slotStart->format('H:i'), $validSlotStarts, true) || $slotStart->lt($workdayStart) || $slotEnd->gt($workdayEnd)) {
+                return back()
+                    ->withErrors([
+                        'appointment_date' => 'Choose one of the available appointment slots. Each session lasts 1 hour and 15 minutes.',
+                    ])
+                    ->withInput();
+            }
+        }
+
         if ($resolvedStatus === 'cancelled') {
             $resolvedAppointmentDate = null;
         }
@@ -160,16 +185,22 @@ class CounsellingController extends Controller
         }
 
         if ($resolvedAppointmentDate) {
+            $resolvedAppointmentEnd = $resolvedAppointmentDate->copy()->addMinutes(75);
             $hasConflict = CounsellingBooking::query()
                 ->whereKeyNot($booking->id)
                 ->whereNotNull('appointment_date')
-                ->where('appointment_date', $resolvedAppointmentDate->format('Y-m-d H:i:s'))
-                ->exists();
+                ->get(['id', 'appointment_date'])
+                ->contains(function (CounsellingBooking $scheduledBooking) use ($resolvedAppointmentDate, $resolvedAppointmentEnd) {
+                    $scheduledStart = Carbon::parse($scheduledBooking->appointment_date)->seconds(0);
+                    $scheduledEnd = $scheduledStart->copy()->addMinutes(75);
+
+                    return $resolvedAppointmentDate->lt($scheduledEnd) && $scheduledStart->lt($resolvedAppointmentEnd);
+                });
 
             if ($hasConflict) {
                 return back()
                     ->withErrors([
-                        'appointment_date' => 'That appointment date and time is already booked. Choose another slot.',
+                        'appointment_date' => 'That appointment session overlaps with another booking. Choose another slot.',
                     ])
                     ->withInput();
             }
@@ -265,7 +296,7 @@ class CounsellingController extends Controller
         $user = Auth::guard('web')->user();
 
         if (!$this->canManageCounselling($user)) {
-            return redirect()->route('counselling')->with('error', 'Only psychologists can download counselling reports.');
+            return redirect()->route('counselling')->with('error', 'Only counselling managers can download counselling reports.');
         }
 
         [
@@ -377,7 +408,7 @@ class CounsellingController extends Controller
 
     protected function canManageCounselling(User $user): bool
     {
-        return $user->role === 'psychologist';
+        return in_array($user->role, ['psychologist', 'executive'], true);
     }
 
     protected function normalizeCounsellingStatus(?string $status): string
@@ -392,6 +423,22 @@ class CounsellingController extends Controller
     protected function counsellingBookingStatuses(): array
     {
         return ['pending', 'scheduled', 'attended', 'cancelled'];
+    }
+
+    protected function counsellingAppointmentSlotStarts(): array
+    {
+        $starts = [];
+        $minutes = 8 * 60;
+        $closingMinutes = (16 * 60) + 30;
+        $sessionMinutes = 75;
+        $interval = 80;
+
+        while (($minutes + $sessionMinutes) <= $closingMinutes) {
+            $starts[] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+            $minutes += $interval;
+        }
+
+        return $starts;
     }
 
     protected function extractEmergencyCounsellingReply(array $response): ?string

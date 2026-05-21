@@ -46,6 +46,54 @@
                 color: #0f172a;
                 font-weight: 800;
             }
+            .summary-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .summary-card {
+                background: #f8fafc;
+                color: #1f2937;
+                border-radius: 1rem;
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+                padding: 1.1rem;
+            }
+            .summary-card h4 {
+                color: #0f172a;
+                font-weight: 800;
+                margin-bottom: 0.75rem;
+            }
+            .summary-metrics {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+                margin-bottom: 0.9rem;
+            }
+            .summary-metric {
+                background: #eef2ff;
+                border: 1px solid rgba(99, 102, 241, 0.12);
+                border-radius: 0.8rem;
+                padding: 0.75rem;
+            }
+            .summary-metric span {
+                display: block;
+                color: #64748b;
+                font-size: 0.78rem;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+            .summary-metric strong {
+                display: block;
+                color: #0f172a;
+                font-size: 1.25rem;
+                margin-top: 0.2rem;
+            }
+            .occupied-list {
+                color: #475569;
+                margin: 0;
+            }
             .room-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -106,6 +154,46 @@
                     <p class="mb-0 text-secondary">Create a room manually or use the default block generator to add AG and AF.</p>
                 </div>
             @else
+                <div class="summary-grid">
+                    @foreach ($rooms as $blockName => $blockRooms)
+                        @php
+                            $totalRooms = $blockRooms->count();
+                            $occupiedRooms = $blockRooms->filter(fn ($room) => (int) $room->occupied_beds > 0);
+                            $availableRoomsCount = $blockRooms->filter(fn ($room) => (int) $room->occupied_beds < (int) $room->capacity)->count();
+                            $occupiedBeds = $blockRooms->sum(fn ($room) => (int) $room->occupied_beds);
+                            $availableBeds = $blockRooms->sum(fn ($room) => max(0, (int) $room->capacity - (int) $room->occupied_beds));
+                            $occupiedRoomLabels = $occupiedRooms
+                                ->map(fn ($room) => $room->block_name . '-' . str_pad((string) $room->room_number, 2, '0', STR_PAD_LEFT) . ' (' . $room->occupied_beds . '/' . $room->capacity . ')')
+                                ->implode(', ');
+                        @endphp
+                        <div class="summary-card">
+                            <h4>Block {{ $blockName }} Summary</h4>
+                            <div class="summary-metrics">
+                                <div class="summary-metric">
+                                    <span>Available Rooms</span>
+                                    <strong>{{ $availableRoomsCount }}/{{ $totalRooms }}</strong>
+                                </div>
+                                <div class="summary-metric">
+                                    <span>Available Beds</span>
+                                    <strong>{{ $availableBeds }}</strong>
+                                </div>
+                                <div class="summary-metric">
+                                    <span>Occupied Rooms</span>
+                                    <strong>{{ $occupiedRooms->count() }}</strong>
+                                </div>
+                                <div class="summary-metric">
+                                    <span>Occupied Beds</span>
+                                    <strong>{{ $occupiedBeds }}</strong>
+                                </div>
+                            </div>
+                            <p class="occupied-list">
+                                <strong>Occupied:</strong>
+                                {{ $occupiedRoomLabels !== '' ? $occupiedRoomLabels : 'No rooms occupied' }}
+                            </p>
+                        </div>
+                    @endforeach
+                </div>
+
                 <div class="row g-4">
                     @foreach ($rooms as $blockName => $blockRooms)
                         <div class="col-12">

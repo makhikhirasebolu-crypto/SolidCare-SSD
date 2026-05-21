@@ -26,6 +26,10 @@
         .topbar a { color:#4f46e5; text-decoration:none; font-weight:700; }
     </style>
     <script>
+        const limkokwingFaculties = @json(config('limkokwing.faculties', []));
+        const oldClassValue = @json(old('class'));
+        const oldYearValue = @json(old('year'));
+
         function toggleRoleFields() {
             const role = document.getElementById('role').value;
             const yearLeaderSection = document.getElementById('yearleader-fields');
@@ -33,9 +37,103 @@
             yearLeaderSection.style.display = role === 'yearleader' ? 'block' : 'none';
         }
 
+        function populateClassOptions() {
+            const facultySelect = document.getElementById('faculty');
+            const classSelect = document.getElementById('class');
+
+            if (!facultySelect || !classSelect) {
+                return;
+            }
+
+            const selectedFaculty = Object.values(limkokwingFaculties).find(function (faculty) {
+                return faculty.label === facultySelect.value;
+            });
+            const facultyGroups = selectedFaculty ? [selectedFaculty] : Object.values(limkokwingFaculties);
+            const selectedValue = classSelect.dataset.currentValue || oldClassValue || '';
+
+            classSelect.innerHTML = '<option value="">Select class/programme</option>';
+
+            facultyGroups.forEach(function (faculty) {
+                const programmes = faculty.programmes || [];
+                const optionParent = selectedFaculty ? classSelect : document.createElement('optgroup');
+
+                if (!selectedFaculty) {
+                    optionParent.label = faculty.label;
+                }
+
+                programmes.forEach(function (programme) {
+                    const option = document.createElement('option');
+                    option.value = programme;
+                    option.textContent = programme;
+
+                    if (programme === selectedValue) {
+                        option.selected = true;
+                    }
+
+                    optionParent.appendChild(option);
+                });
+
+                if (!selectedFaculty && programmes.length > 0) {
+                    classSelect.appendChild(optionParent);
+                }
+            });
+
+            classSelect.dataset.currentValue = '';
+            populateYearOptions();
+        }
+
+        function programmeYearCount(programme) {
+            const normalizedProgramme = (programme || '').toLowerCase();
+
+            if (!normalizedProgramme) {
+                return 0;
+            }
+
+            if (normalizedProgramme.includes('certificate')) {
+                return 2;
+            }
+
+            if (normalizedProgramme.includes('diploma') || normalizedProgramme.includes('associate')) {
+                return 3;
+            }
+
+            return 4;
+        }
+
+        function populateYearOptions() {
+            const classSelect = document.getElementById('class');
+            const yearSelect = document.getElementById('year');
+
+            if (!classSelect || !yearSelect) {
+                return;
+            }
+
+            const selectedValue = yearSelect.dataset.currentValue || oldYearValue || '';
+            const yearCount = programmeYearCount(classSelect.value) || 4;
+
+            yearSelect.innerHTML = '<option value="">Select year</option>';
+
+            for (let year = 1; year <= yearCount; year += 1) {
+                const option = document.createElement('option');
+                option.value = String(year);
+                option.textContent = String(year);
+
+                if (option.value === selectedValue) {
+                    option.selected = true;
+                }
+
+                yearSelect.appendChild(option);
+            }
+
+            yearSelect.dataset.currentValue = '';
+        }
+
         window.addEventListener('DOMContentLoaded', function () {
             document.getElementById('role').addEventListener('change', toggleRoleFields);
+            document.getElementById('faculty').addEventListener('change', populateClassOptions);
+            document.getElementById('class').addEventListener('change', populateYearOptions);
             toggleRoleFields();
+            populateClassOptions();
         });
     </script>
 </head>
@@ -44,7 +142,7 @@
         <div class="topbar">
             <div>
                 <h1>Create User</h1>
-                <p>Add staff and student users to SolidCare SSD.</p>
+                <p>Add staff users to SolidCare SSD.</p>
             </div>
             <a href="{{ route('dashboard') }}">Back to Dashboard</a>
         </div>
@@ -81,7 +179,7 @@
 
                 <label for="role">Role</label>
                 <select id="role" name="role" required>
-                    <option value="student" {{ old('role') === 'student' ? 'selected' : '' }}>Student</option>
+                    <option value="">Select role</option>
                     <option value="executive" {{ old('role') === 'executive' ? 'selected' : '' }}>Executive</option>
                     <option value="ssd_assistant_1" {{ old('role') === 'ssd_assistant_1' ? 'selected' : '' }}>SSD Assistant 1</option>
                     <option value="ssd_assistant_2" {{ old('role') === 'ssd_assistant_2' ? 'selected' : '' }}>SSD Assistant 2</option>
@@ -93,13 +191,24 @@
 
                 <div id="yearleader-fields" style="display:none;">
                     <label for="faculty">Faculty</label>
-                    <input id="faculty" name="faculty" type="text" value="{{ old('faculty') }}" placeholder="Faculty name">
+                    <select id="faculty" name="faculty">
+                        <option value="">Select faculty</option>
+                        @foreach (config('limkokwing.faculties', []) as $faculty)
+                            <option value="{{ $faculty['label'] }}" {{ old('faculty') === $faculty['label'] ? 'selected' : '' }}>
+                                {{ $faculty['label'] }}
+                            </option>
+                        @endforeach
+                    </select>
 
-                    <label for="class">Class</label>
-                    <input id="class" name="class" type="text" value="{{ old('class') }}" placeholder="Class name or section">
+                    <label for="class">Class/Programme</label>
+                    <select id="class" name="class" data-current-value="{{ old('class') }}">
+                        <option value="">Select class/programme</option>
+                    </select>
 
                     <label for="year">Year</label>
-                    <input id="year" name="year" type="text" value="{{ old('year') }}" placeholder="Academic year">
+                    <select id="year" name="year" data-current-value="{{ old('year') }}">
+                        <option value="">Select year</option>
+                    </select>
                 </div>
 
                 <button type="submit">Create User</button>

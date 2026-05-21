@@ -15,6 +15,7 @@ class ClinicAccessTest extends TestCase
         $student = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',
@@ -33,6 +34,7 @@ class ClinicAccessTest extends TestCase
         $student = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',
@@ -58,6 +60,7 @@ class ClinicAccessTest extends TestCase
         $student = User::create([
             'name' => 'Nthati Lehana',
             'email' => 'lehananthati@gmail.com',
+            'email_verified_at' => now(),
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'continuing',

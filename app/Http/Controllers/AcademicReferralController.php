@@ -33,6 +33,23 @@ class AcademicReferralController extends Controller
         return in_array($role, $this->ssdStaffRoles(), true);
     }
 
+    private function referralQueryForUser(User $user)
+    {
+        $query = StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user']);
+
+        if ($user->role === 'yearleader') {
+            $query->where('referred_by', $user->id);
+        }
+
+        return $query;
+    }
+
+    private function canAccessReferral(User $user, StudentReferral $referral): bool
+    {
+        return $this->canHandleReferredStudents($user->role)
+            || ($user->role === 'yearleader' && (int) $referral->referred_by === (int) $user->id);
+    }
+
     private function buildStudentProfile(User $student): array
     {
         $parts = preg_split('/\s+/', trim($student->name));
@@ -158,7 +175,7 @@ class AcademicReferralController extends Controller
         $canComment = $canManageReferrals;
         $studentDirectory = $canRefer ? $this->studentDirectory() : collect();
         $yearLeaderProfile = $user->yearLeader;
-        $referrals = StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user'])
+        $referrals = $this->referralQueryForUser($user)
             ->latest()
             ->get();
         $studentProfilesById = $referrals
@@ -181,7 +198,7 @@ class AcademicReferralController extends Controller
         $reportType = $request->get('type', 'general');
         $year = $request->get('year', now()->year);
         
-        $referrals = StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user'])
+        $referrals = $this->referralQueryForUser($user)
             ->whereYear('created_at', $year)
             ->latest()
             ->get();
@@ -381,6 +398,10 @@ class AcademicReferralController extends Controller
         
         if (! $this->canManageSupportDesk($user->role)) {
             return back()->with('error', 'Only Year Leaders, Executive, SSD Assistant 1, and SSD Assistant 2 can reply to student support entries.');
+        }
+
+        if (! $this->canAccessReferral($user, $referral)) {
+            return back()->with('error', 'You can only reply to students you referred.');
         }
         
         $request->validate([

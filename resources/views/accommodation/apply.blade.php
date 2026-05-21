@@ -470,6 +470,10 @@ textarea:focus {
     $limkokwingFaculties = config('limkokwing.faculties', []);
     $maritalStatusOptions = ['Single', 'Married', 'Divorced', 'Widowed', 'Other'];
     $semesterOptions = ['S1', 'S2', 'Other'];
+    $nationalityOptions = ['Mosotho', 'South African', 'Zimbabwean', 'Motswana', 'Swati'];
+    $selectedNationality = old('nationality', 'Mosotho');
+    $isOtherNationality = $selectedNationality !== '' && ($selectedNationality === 'Other' || ! in_array($selectedNationality, $nationalityOptions, true));
+    $otherNationality = old('nationality_other', $isOtherNationality && $selectedNationality !== 'Other' ? $selectedNationality : '');
 @endphp
 
 <div class="page-shell">
@@ -553,19 +557,26 @@ textarea:focus {
 
                                 <div class="field">
                                     <label for="nationality">Nationality</label>
-                                    <input id="nationality" type="text" name="nationality" value="{{ old('nationality', 'Mosotho') }}" required>
+                                    <select id="nationality" name="nationality" required>
+                                        <option value="">Select nationality</option>
+                                        @foreach ($nationalityOptions as $nationalityOption)
+                                            <option value="{{ $nationalityOption }}"{{ $selectedNationality === $nationalityOption ? ' selected' : '' }}>{{ $nationalityOption }}</option>
+                                        @endforeach
+                                        <option value="Other"{{ $isOtherNationality ? ' selected' : '' }}>Other</option>
+                                    </select>
+                                </div>
+
+                                <div class="field" data-nationality-other-wrapper{{ $isOtherNationality ? '' : ' hidden' }}>
+                                    <label for="nationality_other">Write your nationality</label>
+                                    <input id="nationality_other" type="text" name="nationality_other" value="{{ $otherNationality }}"{{ $isOtherNationality ? ' required' : '' }}>
                                 </div>
 
                                 <div class="field">
                                     <span class="field-label">Gender</span>
                                     <div class="choice-grid">
                                         <label class="choice-pill">
-                                            <input type="radio" name="gender" value="female"{{ old('gender') === 'female' ? ' checked' : '' }} required>
+                                            <input type="radio" name="gender" value="female" checked required>
                                             <span>Female</span>
-                                        </label>
-                                        <label class="choice-pill">
-                                            <input type="radio" name="gender" value="male"{{ old('gender') === 'male' ? ' checked' : '' }} required>
-                                            <span>Male</span>
                                         </label>
                                     </div>
                                 </div>
@@ -841,6 +852,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const faculties = @json($limkokwingFaculties);
     const facultyDropdown = document.getElementById('faculty');
     const programmeDropdown = document.getElementById('programme');
+    const nationalityDropdown = document.getElementById('nationality');
+    const otherNationalityWrapper = document.querySelector('[data-nationality-other-wrapper]');
+    const otherNationalityInput = document.getElementById('nationality_other');
 
     const normalizeValue = (value) => (value || '').toString().trim().toLowerCase();
 
@@ -916,6 +930,25 @@ document.addEventListener('DOMContentLoaded', function () {
         programmeDropdown.dataset.currentValue = '';
         populateProgrammes(this.value, '');
     });
+
+    const syncNationalityOtherField = () => {
+        if (!nationalityDropdown || !otherNationalityWrapper || !otherNationalityInput) {
+            return;
+        }
+
+        const shouldShow = nationalityDropdown.value === 'Other';
+        otherNationalityWrapper.hidden = !shouldShow;
+        otherNationalityInput.required = shouldShow;
+
+        if (!shouldShow) {
+            otherNationalityInput.value = '';
+        }
+    };
+
+    if (nationalityDropdown) {
+        nationalityDropdown.addEventListener('change', syncNationalityOtherField);
+        syncNationalityOtherField();
+    }
 
     const toggleConditionalField = (targetName, shouldShow) => {
         const wrapper = document.querySelector(`[data-conditional-wrapper="${targetName}"]`);

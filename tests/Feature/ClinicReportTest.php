@@ -79,6 +79,60 @@ class ClinicReportTest extends TestCase
         $response->assertSee('90');
     }
 
+    public function test_monthly_clinic_report_shows_only_currently_available_stock(): void
+    {
+        $executive = $this->createExecutiveUser();
+        [$paracetamol, $amoxicillin] = $this->createClinicItems();
+
+        $amoxicillin->update([
+            'quantity_issued' => 90,
+            'status' => 'out_of_stock',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('clinic', [
+            'report_generated' => 1,
+            'report_type' => 'month',
+            'report_month' => 4,
+            'report_year' => 2026,
+        ]));
+
+        $response->assertOk();
+        $availableStockSection = $this->reportAvailableStockSection($response->getContent());
+
+        $this->assertStringContainsString('Available Stock', $availableStockSection);
+        $this->assertStringContainsString('1 entries', $availableStockSection);
+        $this->assertStringContainsString('Paracetamol', $availableStockSection);
+        $this->assertStringNotContainsString('Amoxicillin', $availableStockSection);
+        $this->assertStringContainsString('150', $availableStockSection);
+    }
+
+    public function test_semester_clinic_report_shows_only_currently_available_stock(): void
+    {
+        $executive = $this->createExecutiveUser();
+        [$paracetamol, $amoxicillin] = $this->createClinicItems();
+
+        $paracetamol->update([
+            'quantity_issued' => 150,
+            'status' => 'out_of_stock',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('clinic', [
+            'report_generated' => 1,
+            'report_type' => 'semester',
+            'report_semester' => 1,
+            'report_year' => 2026,
+        ]));
+
+        $response->assertOk();
+        $availableStockSection = $this->reportAvailableStockSection($response->getContent());
+
+        $this->assertStringContainsString('Available Stock', $availableStockSection);
+        $this->assertStringContainsString('1 entries', $availableStockSection);
+        $this->assertStringNotContainsString('Paracetamol', $availableStockSection);
+        $this->assertStringContainsString('Amoxicillin', $availableStockSection);
+        $this->assertStringContainsString('90', $availableStockSection);
+    }
+
     public function test_executive_can_download_clinic_report_grouped_by_disease(): void
     {
         $executive = $this->createExecutiveUser();
@@ -178,6 +232,17 @@ class ClinicReportTest extends TestCase
             'role' => 'executive',
             'disability' => 'no',
         ]);
+    }
+
+    private function reportAvailableStockSection(string $content): string
+    {
+        $start = strpos($content, '<h4>Available Stock</h4>');
+        $this->assertNotFalse($start);
+
+        $end = strpos($content, '<h4>Disease Summary Report</h4>', $start);
+        $this->assertNotFalse($end);
+
+        return substr($content, $start, $end - $start);
     }
 
     /**

@@ -711,8 +711,9 @@
             $clinicAccessRoles = ['executive', 'ssd_assistant_1', 'ssd_assistant_2', 'senior_nurse_officer'];
             $canAccessAcademicSupports = $dashboardUser && in_array($dashboardUser->role, $academicSupportRoles, true);
             $canAccessClinic = $dashboardUser && in_array($dashboardUser->role, $clinicAccessRoles, true);
-            $canManageCounselling = $dashboardUser && $dashboardUser->role === 'psychologist';
+            $canManageCounselling = $dashboardUser && in_array($dashboardUser->role, ['psychologist', 'executive'], true);
             $canAccessCounselling = $dashboardUser && ($canManageCounselling || ($dashboardUser->role === 'student' && $dashboardUser->student_type === 'continuing'));
+            $canAccessAccommodation = $dashboardUser && ($dashboardUser->role === 'student' || in_array($dashboardUser->role, ['executive', 'warden', 'ssd_assistant_2'], true));
             $userName = $dashboardUser ? ($dashboardUser->name ?? ($dashboardUser->email ?? 'Member')) : 'Guest';
         @endphp
 
@@ -824,14 +825,14 @@
                         @if ($canManageCounselling)
                             Review requests, schedule sessions, mark attendance & provide professional follow-up.
                         @else
-                            a dedicated system that supports students’ psychological health by enabling counselling requests, session bookings, and progress tracking, while psychologists ensure professional care, monitoring, and follow-up.
+                            a dedicated system that supports students' psychological health by enabling counselling requests, session bookings, and progress tracking, while counselling staff ensure professional care, monitoring, and follow-up.
                         @endif
                     </p>
                     <div class="card-action">
                         @if ($canAccessCounselling)
                             <a href="{{ route('counselling') }}" class="btn-service">{{ $canManageCounselling ? 'Manage Appointments' : 'Book Counselling' }} <i class="fas fa-arrow-right"></i></a>
                         @else
-                            <span class="btn-disabled"><i class="fas fa-lock"></i> Continuing Students / Psychologist only</span>
+                            <span class="btn-disabled"><i class="fas fa-lock"></i> Continuing Students / Counselling Staff only</span>
                         @endif
                     </div>
                 </div>
@@ -842,7 +843,11 @@
                     <h3>Accommodation</h3>
                     <p>streamlines student housing by managing applications, optimizing room allocation, monitoring occupancy, and maintaining accurate, secure residence records.</p>
                     <div class="card-action">
-                        <a href="{{ route('accommodation') }}" class="btn-service">Manage Housing <i class="fas fa-arrow-right"></i></a>
+                        @if ($canAccessAccommodation)
+                            <a href="{{ route('accommodation') }}" class="btn-service">Manage Housing <i class="fas fa-arrow-right"></i></a>
+                        @else
+                            <span class="btn-disabled"><i class="fas fa-lock"></i> Students / Accommodation staff only</span>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -953,3 +958,4 @@
         </script>
     </body>
 </html>
+

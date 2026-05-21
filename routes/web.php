@@ -1,15 +1,20 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Mail\TestEmail;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\AcademicReferralController;
 
 Route::get('/', [AuthController::class, 'showLogin'])->name('login');
+Route::get('/login', [AuthController::class, 'showLogin']);
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
 Route::post('/register', [AuthController::class, 'register'])->name('register.store');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
 Route::get('/clinic', [AuthController::class, 'clinic'])->name('clinic');
 Route::get('/student/clinic', [AuthController::class, 'studentClinic'])->name('student.clinic.index');
 Route::post('/student/clinic', [AuthController::class, 'storeStudentClinic'])->name('student.clinic.store');
@@ -41,10 +46,15 @@ Route::post('/accommodation/store', [AuthController::class, 'storeAccommodation'
 Route::get('/accommodation/checkout', [AuthController::class, 'checkoutAccommodation'])->name('student.accommodation.checkout');
 Route::post('/accommodation/checkout', [AuthController::class, 'storeCheckout'])->name('student.accommodation.checkout.store');
 Route::post('/accommodation/{application}/checkout/status', [AuthController::class, 'updateCheckoutStatus'])->name('student.accommodation.checkout.status');
+Route::post('/accommodation/reallocation', [AuthController::class, 'storeRoomReallocationRequest'])->name('student.accommodation.reallocation.store');
+Route::post('/accommodation/{application}/reallocate', [AuthController::class, 'reallocateRoom'])->name('student.accommodation.reallocate');
+Route::post('/accommodation/{application}/reallocation/status', [AuthController::class, 'updateRoomReallocationStatus'])->name('student.accommodation.reallocation.status');
 Route::get('/home', [AuthController::class, 'dashboard'])->name('home');
 Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
 Route::get('/admin/users/create', [AuthController::class, 'showCreateUser'])->name('admin.users.create');
 Route::post('/admin/users/store', [AuthController::class, 'storeAdminUser'])->name('admin.users.store');
+Route::post('/admin/users/{user}/temporary-password', [AuthController::class, 'reissueTemporaryPassword'])->name('admin.users.temporary-password.reissue');
+Route::delete('/admin/users/{user}', [AuthController::class, 'deleteAdminUser'])->name('admin.users.destroy');
 Route::get('/password/temporary', [AuthController::class, 'showTemporaryPasswordForm'])->name('password.temporary');
 Route::post('/password/temporary', [AuthController::class, 'updateTemporaryPassword'])->name('password.temporary.update');
 
@@ -57,20 +67,33 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/academic/referrals/report', [AcademicReferralController::class, 'generateReport'])->name('academic.referrals.report');
 });
 
-use Illuminate\Support\Facades\Mail;
-
 Route::get('/send-test-email', function () {
-    $testEmail = 'lrasebolu@gmail.com';
-    $data = ['name' => 'Lerato'];
+    abort_unless(app()->environment(['local', 'testing']), 404);
+
+    return view('mail-test');
+})->name('mail.test');
+
+Route::post('/send-test-email', function (Request $request) {
+    abort_unless(app()->environment(['local', 'testing']), 404);
+
+    $validated = $request->validate([
+        'to' => ['required', 'email'],
+        'subject' => ['required', 'string', 'max:150'],
+        'message' => ['required', 'string', 'max:2000'],
+    ]);
 
     try {
-        Mail::send([], [], function ($message) use ($testEmail) {
-            $message->to($testEmail)
-                    ->subject('Test Email from My Laravel App')
-                    ->html('<h1>Test Email Sent!</h1><p>Hello, this is a test email from my Laravel application using SendGrid.</p>');
-        });
-        return 'Test email sent to ' . $testEmail . '.';
-    } catch (\Exception $e) {
-        return 'Failed to send email: ' . $e->getMessage();
+        Mail::to($validated['to'])->send(new TestEmail(
+            $validated['subject'],
+            $validated['message']
+        ));
+
+        return back()->with('status', 'Test email sent to '.$validated['to'].'.');
+    } catch (Throwable $e) {
+        report($e);
+
+        return back()
+            ->withInput($request->except('_token'))
+            ->withErrors(['to' => 'Email could not be sent: '.$e->getMessage()]);
     }
-});
+})->name('mail.test.send');

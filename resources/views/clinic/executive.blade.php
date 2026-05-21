@@ -888,7 +888,6 @@
             $netMovement = $totalReceived - $totalIssued;
             $reportActivityCount = $stockReceipts->count() + $stockUsages->count();
             $trackedMedicines = $stockItems->count();
-            $confirmedCount = $stockItems->filter(fn ($item) => ! is_null($item->confirmed_at))->count();
             $inStockCount = $stockItems->where('status', 'in_stock')->count();
             $lowStockCount = $stockItems->where('status', 'low_stock')->count();
             $outOfStockCount = $stockItems->where('status', 'out_of_stock')->count();
@@ -1000,7 +999,6 @@
                 ['label' => 'In Stock', 'count' => $inStockCount, 'color' => '#14b8a6'],
                 ['label' => 'Low Stock', 'count' => $lowStockCount, 'color' => '#fb923c'],
                 ['label' => 'Out of Stock', 'count' => $outOfStockCount, 'color' => '#ef4444'],
-                ['label' => 'Confirmed', 'count' => $confirmedCount, 'color' => '#2f6df6'],
             ]);
         @endphp
 
@@ -1047,7 +1045,7 @@
                         <div class="board-card p-4">
                             <h3>Add Stock</h3>
                             <p class="text-secondary">
-                                Enter medicine name and quantity received. Records are saved to <code>clinic_stock_receipts</code> with automatic received date.
+                                Enter medicine name, quantity received, and expiry date. Records are saved to <code>clinic_stock_receipts</code> with automatic received date.
                             </p>
 
                             <div class="d-grid gap-2 mb-3">
@@ -1069,6 +1067,10 @@
                                             <div class="col-12">
                                                 <label class="form-label">Quantity Received</label>
                                                 <input type="number" name="stock_entries[0][quantity_received]" min="0" class="form-control" required>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label">Expiry Date</label>
+                                                <input type="date" name="stock_entries[0][expiry_date]" class="form-control" required>
                                             </div>
                                         </div>
                                     </div>
@@ -1112,6 +1114,7 @@
                                         <div>Opening Stock: {{ $item->opening_stock }}</div>
                                         <div>Received: {{ $item->quantity_received > 0 ? $item->quantity_received : '' }}</div>
                                         <div>Issued: {{ $item->quantity_issued }}</div>
+                                        <div>Expiry Date: {{ optional($item->expiry_date)->format('F j, Y') ?? 'Not recorded' }}</div>
                                         <div>
                                             Confirmed:
                                             @if ($item->confirmed_at)
@@ -1619,11 +1622,11 @@
                                                         <span class="table-kicker">Stock</span>
                                                         <h4>Available Stock</h4>
                                                     </div>
-                                                    <span class="report-note">{{ number_format($stockItems->count()) }} entries</span>
+                                                    <span class="report-note">{{ number_format($reportStockItems->count()) }} entries</span>
                                                 </div>
 
-                                                @if ($stockItems->isEmpty())
-                                                    <div class="read-only-note report-empty">No stock items exist in the system yet.</div>
+                                                @if ($reportStockItems->isEmpty())
+                                                    <div class="read-only-note report-empty">No available stock found for this report.</div>
                                                 @else
                                                     <div class="report-table-wrap">
                                                         <table class="report-table">
@@ -1631,15 +1634,17 @@
                                                                 <tr>
                                                                     <th>Medicine</th>
                                                                     <th>Available Stock</th>
+                                                                    <th>Expiry Date</th>
                                                                     <th>Status</th>
                                                                     <th>Action</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                @foreach ($stockItems as $item)
+                                                                @foreach ($reportStockItems as $item)
                                                                     <tr>
                                                                         <td>{{ $item->medicine_name ?: 'Unknown' }}</td>
                                                                         <td>{{ number_format($item->balance) }}</td>
+                                                                        <td>{{ optional($item->expiry_date)->format('M j, Y') ?? 'Not recorded' }}</td>
                                                                         <td>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $item->status)) }}</td>
                                                                         <td>
                                                                             <form method="POST" action="{{ route('clinic.stock.delete', $item) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete {{ $item->medicine_name }} from stock?');">
@@ -1875,6 +1880,10 @@
                                 <div class="col-12">
                                     <label class="form-label">Quantity Received</label>
                                     <input type="number" name="stock_entries[${stockIndex}][quantity_received]" min="0" class="form-control" required>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Expiry Date</label>
+                                    <input type="date" name="stock_entries[${stockIndex}][expiry_date]" class="form-control" required>
                                 </div>
                             </div>
                         `;
