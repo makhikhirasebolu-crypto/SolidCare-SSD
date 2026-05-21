@@ -133,6 +133,57 @@ class ClinicReportTest extends TestCase
         $this->assertStringContainsString('90', $availableStockSection);
     }
 
+    public function test_clinic_report_marks_stock_below_forty_percent_as_low_stock(): void
+    {
+        $executive = $this->createExecutiveUser();
+        [$paracetamol] = $this->createClinicItems();
+
+        $paracetamol->update([
+            'quantity_issued' => 100,
+            'status' => 'in_stock',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('clinic', [
+            'report_generated' => 1,
+            'report_type' => 'general',
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('Low Stock');
+        $response->assertSee('1/2');
+
+        $availableStockSection = $this->reportAvailableStockSection($response->getContent());
+
+        $this->assertStringContainsString('Paracetamol', $availableStockSection);
+        $this->assertStringContainsString('50', $availableStockSection);
+        $this->assertStringContainsString('Low Stock', $availableStockSection);
+    }
+
+    public function test_clinic_report_keeps_stock_at_forty_one_percent_in_stock(): void
+    {
+        $executive = $this->createExecutiveUser();
+        [$paracetamol] = $this->createClinicItems();
+
+        $paracetamol->update([
+            'opening_stock' => 100,
+            'quantity_received' => 0,
+            'quantity_issued' => 59,
+            'status' => 'low_stock',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('clinic', [
+            'report_generated' => 1,
+            'report_type' => 'general',
+        ]));
+
+        $response->assertOk();
+        $availableStockSection = $this->reportAvailableStockSection($response->getContent());
+
+        $this->assertStringContainsString('Paracetamol', $availableStockSection);
+        $this->assertStringContainsString('41', $availableStockSection);
+        $this->assertStringContainsString('In Stock', $availableStockSection);
+    }
+
     public function test_executive_can_download_clinic_report_grouped_by_disease(): void
     {
         $executive = $this->createExecutiveUser();

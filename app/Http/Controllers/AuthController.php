@@ -895,7 +895,10 @@ class AuthController extends Controller
                     'expiry_date' => $this->resolveClinicStockItemExpiryDate($existingItem, $expiryDate),
                     'confirmed_at' => null,
                     'confirmed_by_user_id' => null,
-                    'status' => $this->resolveClinicStockStatus($openingStock + $quantityReceived - $quantityIssued),
+                    'status' => $this->resolveClinicStockStatus(
+                        $openingStock + $quantityReceived - $quantityIssued,
+                        $openingStock + $quantityReceived
+                    ),
                 ]);
 
                 $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity, $expiryDate);
@@ -903,6 +906,7 @@ class AuthController extends Controller
             }
 
             $entry['status'] = $this->resolveClinicStockStatus(
+                $entry['quantity_received'],
                 $entry['quantity_received']
             );
             $entry['opening_stock'] = 0;
@@ -2024,7 +2028,7 @@ class AuthController extends Controller
             'expiry_date' => Carbon::parse($data['expiry_date'])->toDateString(),
             'confirmed_at' => $data['quantity_received'] > 0 ? null : $item->confirmed_at,
             'confirmed_by_user_id' => $data['quantity_received'] > 0 ? null : $item->confirmed_by_user_id,
-            'status' => $this->resolveClinicStockStatus($balance),
+            'status' => $this->resolveClinicStockStatus($balance, $data['opening_stock'] + $data['quantity_received']),
         ]);
 
         $newlyRecordedReceived = $data['quantity_received'] - $previousQuantityReceived;
@@ -2055,7 +2059,7 @@ class AuthController extends Controller
             'quantity_received' => 0,
             'confirmed_at' => now(),
             'confirmed_by_user_id' => $user->id,
-            'status' => $this->resolveClinicStockStatus($newOpeningStock - $item->quantity_issued),
+            'status' => $this->resolveClinicStockStatus($newOpeningStock - $item->quantity_issued, $newOpeningStock),
         ]);
 
         return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock confirmed successfully.');
@@ -2276,10 +2280,9 @@ class AuthController extends Controller
             ->latest('clinic_stock_receipts.received_date')
             ->latest('clinic_stock_receipts.id')
             ->get();
-        $reportStockItems = $this->clinicReportAvailableStockItems(
-            ClinicStockItem::query()->orderBy('medicine_name')->get(),
-            $reportType
-        );
+        $downloadStockItems = ClinicStockItem::query()->orderBy('medicine_name')->get();
+        $this->refreshClinicStockStatuses($downloadStockItems);
+        $reportStockItems = $this->clinicReportAvailableStockItems($downloadStockItems, $reportType);
         $diseaseUsageGroups = $this->groupClinicUsagesByDisease($stockUsages);
         $diseaseBreakdown = $this->summarizeClinicDiseaseBreakdown($stockUsages);
 
@@ -3023,6 +3026,7 @@ class AuthController extends Controller
             ])
             ->orderBy('medicine_name')
             ->get();
+        $this->refreshClinicStockStatuses($stockItems);
         $reportStockItems = $this->clinicReportAvailableStockItems($stockItems, $reportType);
 
         $stockUsagesQuery = ClinicStockUsage::with(['stockItem']);
@@ -3089,17 +3093,39 @@ class AuthController extends Controller
             ->values();
     }
 
-    protected function resolveClinicStockStatus(int $balance): string
+    protected function refreshClinicStockStatuses($stockItems): void
     {
-        if ($balance >= 40) {
-            return 'in_stock';
+        foreach ($stockItems as $item) {
+            $status = $this->resolveClinicStockStatusForItem($item);
+
+            if ($item->status === $status) {
+                continue;
+            }
+
+            $item->forceFill(['status' => $status])->save();
+            $item->status = $status;
+        }
+    }
+
+    protected function resolveClinicStockStatusForItem(ClinicStockItem $item): string
+    {
+        return $this->resolveClinicStockStatus(
+            $item->balance,
+            $item->opening_stock + $item->quantity_received
+        );
+    }
+
+    protected function resolveClinicStockStatus(int $balance, int $totalStock): string
+    {
+        if ($balance <= 0 || $totalStock <= 0) {
+            return 'out_of_stock';
         }
 
-        if ($balance < 30) {
+        if (($balance / $totalStock) < 0.41) {
             return 'low_stock';
         }
 
-        return 'out_of_stock';
+        return 'in_stock';
     }
 
     protected function syncClinicStockItemIssued(ClinicStockItem $item, int $quantityIssued): void
@@ -3109,7 +3135,8 @@ class AuthController extends Controller
         $item->update([
             'quantity_issued' => $safeIssued,
             'status' => $this->resolveClinicStockStatus(
-                $item->opening_stock + $item->quantity_received - $safeIssued
+                $item->opening_stock + $item->quantity_received - $safeIssued,
+                $item->opening_stock + $item->quantity_received
             ),
         ]);
     }
