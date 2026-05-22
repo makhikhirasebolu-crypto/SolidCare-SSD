@@ -35,6 +35,7 @@ Route::get('/clinic/report/download', [AuthController::class, 'downloadClinicRep
 Route::get('/accommodation', [AuthController::class, 'accommodation'])->name('accommodation');
 Route::get('/accommodation/report', [AuthController::class, 'accommodationReport'])->name('accommodation.report');
 Route::get('/accommodation/report/download', [AuthController::class, 'downloadAccommodationReport'])->name('accommodation.report.download');
+Route::post('/accommodation/messages', [AuthController::class, 'storeAccommodationMessage'])->name('accommodation.messages.store');
 Route::get('/accommodation/pending-admissions', [AuthController::class, 'pendingAdmissions'])->name('student.accommodation.pending');
 Route::get('/accommodation/rooms', [AuthController::class, 'roomManagement'])->name('student.accommodation.rooms');
 Route::post('/accommodation/rooms', [AuthController::class, 'storeRoom'])->name('student.accommodation.rooms.store');

@@ -9,6 +9,7 @@ use App\Mail\CheckoutApproved;
 use App\Mail\CheckoutRejected;
 use App\Mail\CheckoutRequestSubmitted;
 use App\Models\AccommodationApplication;
+use App\Models\AccommodationMessage;
 use App\Models\AccommodationRoom;
 use App\Models\Admin;
 use App\Models\ClinicStockComment;
@@ -917,7 +918,8 @@ class AuthController extends Controller
             $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity, $expiryDate);
         }
 
-        return redirect()->route('clinic')->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
+        return $this->redirectToClinicPanel($request, 'add-stock')
+            ->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
     }
 
     public function accommodation()
@@ -969,7 +971,12 @@ class AuthController extends Controller
 
             $admittedApplications = AccommodationApplication::with(['user', 'room', 'previousRoom', 'admissionProcessedBy', 'reallocationApprovedBy', 'roomReallocatedBy'])
                 ->whereIn('status', $this->occupyingAccommodationStatuses())
-                ->latest()
+                ->leftJoin('accommodation_rooms', 'accommodation_applications.accommodation_room_id', '=', 'accommodation_rooms.id')
+                ->select('accommodation_applications.*')
+                ->orderBy('accommodation_rooms.block_name')
+                ->orderBy('accommodation_rooms.room_number')
+                ->orderBy('accommodation_applications.full_name')
+                ->orderBy('accommodation_applications.id')
                 ->get();
 
             $reallocationRequests = AccommodationApplication::with(['user', 'room', 'requestedRoom', 'admissionProcessedBy'])
@@ -989,8 +996,17 @@ class AuthController extends Controller
                 ->groupBy('block_name');
 
             $availableRooms = $this->availableAccommodationRooms();
+            $accommodationMessages = Schema::hasTable('accommodation_messages')
+                ? AccommodationMessage::with(['user', 'replies.user'])
+                    ->whereNull('parent_id')
+                    ->latest()
+                    ->limit(25)
+                    ->get()
+                    ->reverse()
+                    ->values()
+                : collect();
 
-            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests'));
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages'));
         }
 
         $availableRooms = $application
@@ -1944,6 +1960,41 @@ class AuthController extends Controller
         return redirect()->route('accommodation')->with('success', 'Student room reallocated successfully.');
     }
 
+    public function storeAccommodationMessage(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canUseAccommodationCommunication($user)) {
+            return redirect()->route('accommodation')->with('error', 'Only the warden and SSD Assistant 2 can use accommodation communication.');
+        }
+
+        if (! Schema::hasTable('accommodation_messages')) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', 'Accommodation communication is not ready yet. Please run the latest database migrations.');
+        }
+
+        $data = $request->validate([
+            'parent_id' => ['nullable', 'exists:accommodation_messages,id'],
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        AccommodationMessage::create([
+            'user_id' => $user->id,
+            'parent_id' => $data['parent_id'] ?? null,
+            'message' => $data['message'],
+        ]);
+
+        return redirect()
+            ->route('accommodation')
+            ->with('success', ($data['parent_id'] ?? null) ? 'Accommodation reply sent successfully.' : 'Accommodation message sent successfully.');
+    }
+
     public function updateRoomReallocationStatus(Request $request, AccommodationApplication $application)
     {
         if (! Auth::guard('web')->check()) {
@@ -2036,10 +2087,11 @@ class AuthController extends Controller
             $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived, Carbon::parse($data['expiry_date'])->toDateString());
         }
 
-        return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock updated successfully.');
+        return $this->redirectToClinicPanel($request, 'stock-details')
+            ->with('success', $item->medicine_name . ' stock updated successfully.');
     }
 
-    public function confirmClinicStock(ClinicStockItem $item)
+    public function confirmClinicStock(Request $request, ClinicStockItem $item)
     {
         if (!Auth::guard('web')->check()) {
             return redirect()->route('login');
@@ -2048,7 +2100,7 @@ class AuthController extends Controller
         /** @var User $user */
         $user = Auth::guard('web')->user();
 
-        if (! in_array($user->role, ['senior_nurse_officer', 'executive'], true)) {
+        if ($user->role !== 'executive') {
             return redirect()->route('home');
         }
 
@@ -2062,10 +2114,11 @@ class AuthController extends Controller
             'status' => $this->resolveClinicStockStatus($newOpeningStock - $item->quantity_issued, $newOpeningStock),
         ]);
 
-        return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock confirmed successfully.');
+        return $this->redirectToClinicPanel($request, 'stock-details')
+            ->with('success', $item->medicine_name . ' stock confirmed successfully.');
     }
 
-    public function deleteClinicStock(ClinicStockItem $item)
+    public function deleteClinicStock(Request $request, ClinicStockItem $item)
     {
         if (!Auth::guard('web')->check()) {
             return redirect()->route('login');
@@ -2081,7 +2134,8 @@ class AuthController extends Controller
         $medicineName = $item->medicine_name;
         $item->delete();
 
-        return redirect()->route('clinic')->with('success', $medicineName . ' has been deleted from stock.');
+        return $this->redirectToClinicPanel($request, 'stock-details')
+            ->with('success', $medicineName . ' has been deleted from stock.');
     }
 
     public function commentClinicStock(Request $request, ClinicStockItem $item)
@@ -2109,7 +2163,8 @@ class AuthController extends Controller
             'message' => $data['message'],
         ]);
 
-        return redirect()->route('clinic')->with('success', 'Comment saved for ' . $item->medicine_name . '.');
+        return $this->redirectToClinicPanel($request, 'stock-details')
+            ->with('success', 'Comment saved for ' . $item->medicine_name . '.');
     }
 
     public function storeClinicStockUsage(Request $request)
@@ -2136,9 +2191,11 @@ class AuthController extends Controller
         $nextIssued = $item->quantity_issued + $data['quantity_issued'];
 
         if ($nextIssued > ($item->opening_stock + $item->quantity_received)) {
-            return redirect()->route('clinic')->withErrors([
-                'quantity_issued' => 'Issued quantity cannot exceed available stock for ' . $item->medicine_name . '.',
-            ]);
+            return $this->redirectToClinicPanel($request, 'stock-usage')
+                ->withErrors([
+                    'quantity_issued' => 'Issued quantity cannot exceed available stock for ' . $item->medicine_name . '.',
+                ])
+                ->withInput();
         }
 
         ClinicStockUsage::create([
@@ -2152,7 +2209,8 @@ class AuthController extends Controller
 
         $this->syncClinicStockItemIssued($item, $nextIssued);
 
-        return redirect()->route('clinic')->with('success', 'Stock usage recorded for ' . $item->medicine_name . '.');
+        return $this->redirectToClinicPanel($request, 'stock-usage')
+            ->with('success', 'Stock usage recorded for ' . $item->medicine_name . '.');
     }
 
     public function updateClinicStockUsage(Request $request, ClinicStockUsage $usage)
@@ -2182,9 +2240,11 @@ class AuthController extends Controller
             $nextIssued = max(0, $oldItem->quantity_issued - $usage->quantity_issued + $data['quantity_issued']);
 
             if ($nextIssued > ($oldItem->opening_stock + $oldItem->quantity_received)) {
-                return redirect()->route('clinic')->withErrors([
-                    'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $oldItem->medicine_name . '.',
-                ]);
+                return $this->redirectToClinicPanel($request, 'stock-usage')
+                    ->withErrors([
+                        'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $oldItem->medicine_name . '.',
+                    ])
+                    ->withInput();
             }
 
             $usage->update([
@@ -2195,16 +2255,19 @@ class AuthController extends Controller
 
             $this->syncClinicStockItemIssued($oldItem, $nextIssued);
 
-            return redirect()->route('clinic')->with('success', 'Stock usage updated successfully.');
+            return $this->redirectToClinicPanel($request, 'stock-usage')
+                ->with('success', 'Stock usage updated successfully.');
         }
 
         $oldItemNextIssued = max(0, $oldItem->quantity_issued - $usage->quantity_issued);
         $newItemNextIssued = $newItem->quantity_issued + $data['quantity_issued'];
 
         if ($newItemNextIssued > ($newItem->opening_stock + $newItem->quantity_received)) {
-            return redirect()->route('clinic')->withErrors([
-                'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $newItem->medicine_name . '.',
-            ]);
+            return $this->redirectToClinicPanel($request, 'stock-usage')
+                ->withErrors([
+                    'quantity_issued' => 'Updated issued quantity cannot exceed available stock for ' . $newItem->medicine_name . '.',
+                ])
+                ->withInput();
         }
 
         $usage->update([
@@ -2217,10 +2280,11 @@ class AuthController extends Controller
         $this->syncClinicStockItemIssued($oldItem, $oldItemNextIssued);
         $this->syncClinicStockItemIssued($newItem, $newItemNextIssued);
 
-        return redirect()->route('clinic')->with('success', 'Stock usage updated successfully.');
+        return $this->redirectToClinicPanel($request, 'stock-usage')
+            ->with('success', 'Stock usage updated successfully.');
     }
 
-    public function deleteClinicStockUsage(ClinicStockUsage $usage)
+    public function deleteClinicStockUsage(Request $request, ClinicStockUsage $usage)
     {
         if (!Auth::guard('web')->check()) {
             return redirect()->route('login');
@@ -2239,7 +2303,8 @@ class AuthController extends Controller
         $usage->delete();
         $this->syncClinicStockItemIssued($item, $nextIssued);
 
-        return redirect()->route('clinic')->with('success', 'Stock usage deleted successfully.');
+        return $this->redirectToClinicPanel($request, 'stock-usage')
+            ->with('success', 'Stock usage deleted successfully.');
     }
 
     public function downloadClinicReport(Request $request)
@@ -2280,7 +2345,9 @@ class AuthController extends Controller
             ->latest('clinic_stock_receipts.received_date')
             ->latest('clinic_stock_receipts.id')
             ->get();
-        $downloadStockItems = ClinicStockItem::query()->orderBy('medicine_name')->get();
+        $downloadStockItems = ClinicStockItem::with('firstReceipt')
+            ->orderBy('medicine_name')
+            ->get();
         $this->refreshClinicStockStatuses($downloadStockItems);
         $reportStockItems = $this->clinicReportAvailableStockItems($downloadStockItems, $reportType);
         $diseaseUsageGroups = $this->groupClinicUsagesByDisease($stockUsages);
@@ -2324,7 +2391,7 @@ class AuthController extends Controller
 
             fputcsv($handle, []);
             fputcsv($handle, ['Available Stock']);
-            fputcsv($handle, ['Medicine', 'Available Stock', 'Expiry Date', 'Status']);
+            fputcsv($handle, ['Medicine', 'Available Stock', 'Date Entered', 'Expiry Date', 'Status']);
 
             if ($reportStockItems->isEmpty()) {
                 fputcsv($handle, ['No available stock found for this report.']);
@@ -2333,6 +2400,7 @@ class AuthController extends Controller
                     fputcsv($handle, [
                         $item->medicine_name ?: 'Unknown',
                         $item->balance,
+                        optional($item->firstReceipt?->received_date ?? $item->created_at)->format('Y-m-d') ?? '',
                         optional($item->expiry_date)->format('Y-m-d') ?? '',
                         Str::headline(str_replace('_', ' ', $item->status)),
                     ]);
@@ -2701,6 +2769,11 @@ class AuthController extends Controller
         return in_array($user->role, ['warden', 'ssd_assistant_2'], true);
     }
 
+    protected function canUseAccommodationCommunication(User $user): bool
+    {
+        return in_array($user->role, ['warden', 'ssd_assistant_2'], true);
+    }
+
     protected function canAccessAccommodation(User $user): bool
     {
         return $user->role === 'student'
@@ -3021,6 +3094,7 @@ class AuthController extends Controller
 
         $stockItems = ClinicStockItem::with([
                 'confirmer',
+                'firstReceipt',
                 'comments.user',
                 'comments.replies.user',
             ])
@@ -3065,6 +3139,23 @@ class AuthController extends Controller
             'reportSemester',
             'reportLabel'
         ));
+    }
+
+    protected function redirectToClinicPanel(Request $request, string $defaultPanel)
+    {
+        $panel = $request->input('clinic_panel', $defaultPanel);
+
+        if ($panel === 'report') {
+            return redirect()->route('clinic', [
+                'report_generated' => 1,
+                'report_type' => $request->input('report_type', 'general'),
+                'report_year' => $request->input('report_year', now()->year),
+                'report_month' => $request->input('report_month', now()->month),
+                'report_semester' => $request->input('report_semester', 1),
+            ])->with('clinic_panel', 'report');
+        }
+
+        return redirect()->route('clinic')->with('clinic_panel', $panel);
     }
 
     protected function ensureDefaultClinicStockExists(): void

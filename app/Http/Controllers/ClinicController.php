@@ -132,7 +132,7 @@ class ClinicController extends Controller
         /** @var User $user */
         $user = Auth::guard('web')->user();
 
-        if (!in_array($user->role, ['senior_nurse_officer', 'executive'], true)) {
+        if ($user->role !== 'executive') {
             return redirect()->route('home');
         }
 

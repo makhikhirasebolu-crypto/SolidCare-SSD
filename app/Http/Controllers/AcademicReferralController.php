@@ -35,13 +35,7 @@ class AcademicReferralController extends Controller
 
     private function referralQueryForUser(User $user)
     {
-        $query = StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user']);
-
-        if ($user->role === 'yearleader') {
-            $query->where('referred_by', $user->id);
-        }
-
-        return $query;
+        return StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user']);
     }
 
     private function canAccessReferral(User $user, StudentReferral $referral): bool
@@ -271,6 +265,7 @@ class AcademicReferralController extends Controller
             'year_leader_name' => 'required|string|max:255',
             'principal_lecturer' => 'nullable|string|max:255',
             'fmg' => 'nullable|string|max:255',
+            'priority' => 'required|in:Urgent,Normal',
             'reasons_for_referral' => 'required|string',
             'problem_identified_when' => 'required|string|max:255',
             'action_taken' => 'required|string',
@@ -304,9 +299,9 @@ class AcademicReferralController extends Controller
             'student_user_id' => $selectedStudent?->id,
             'student_name' => $studentProfile['name'],
             'student_id' => $studentProfile['student_identity_number'] ?: $validated['student_identity_number'],
-            'programme' => $validated['programme'] ?: $studentProfile['programme'] ?: null,
+            'programme' => ($validated['programme'] ?? null) ?: $studentProfile['programme'] ?: null,
             'reason' => $validated['reasons_for_referral'],
-            'priority' => 'Normal',
+            'priority' => $validated['priority'],
             'status' => 'pending',
             'referred_by' => $user->id,
             'entry_type' => 'referral',
@@ -316,9 +311,9 @@ class AcademicReferralController extends Controller
                 'student_first_name' => $validated['student_first_name'] ?: $studentProfile['first_name'],
                 'student_surname' => $validated['student_surname'] ?: $studentProfile['surname'],
                 'student_identity_number' => $validated['student_identity_number'] ?: $studentProfile['student_identity_number'],
-                'faculty' => $validated['faculty'] ?: $studentProfile['faculty'],
-                'programme' => $validated['programme'] ?: $studentProfile['programme'],
-                'contact_number' => $validated['contact_number'] ?: $studentProfile['contact_number'],
+                'faculty' => ($validated['faculty'] ?? null) ?: $studentProfile['faculty'],
+                'programme' => ($validated['programme'] ?? null) ?: $studentProfile['programme'],
+                'contact_number' => ($validated['contact_number'] ?? null) ?: $studentProfile['contact_number'],
             ]),
         ]);
 

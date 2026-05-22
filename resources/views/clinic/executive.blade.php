@@ -879,7 +879,8 @@
     <body>
         @php
             $canManageClinicStock = $user->role === 'senior_nurse_officer';
-            $canCommentAndConfirmStock = in_array($user->role, ['senior_nurse_officer', 'executive'], true);
+            $canCommentOnStock = in_array($user->role, ['senior_nurse_officer', 'executive'], true);
+            $canConfirmStock = $user->role === 'executive';
             $canGenerateStockReport = in_array($user->role, ['senior_nurse_officer', 'executive'], true);
             $reportWorkspaceRole = $user->role === 'senior_nurse_officer' ? 'Senior Nurse Officer' : 'Executive';
             $pendingConfirmationItems = $stockItems->filter(fn ($item) => $item->quantity_received > 0 && ! $item->confirmed_at);
@@ -1000,6 +1001,7 @@
                 ['label' => 'Low Stock', 'count' => $lowStockCount, 'color' => '#fb923c'],
                 ['label' => 'Out of Stock', 'count' => $outOfStockCount, 'color' => '#ef4444'],
             ]);
+            $activeClinicPanel = old('clinic_panel', session('clinic_panel'));
         @endphp
 
         <div class="page-header">
@@ -1049,11 +1051,12 @@
                             </p>
 
                             <div class="d-grid gap-2 mb-3">
-                                <button type="button" id="show-add-stock-form" class="btn btn-success btn-custom dashboard-action-btn">Add Stock</button>
+                                <button type="button" id="show-add-stock-form" class="btn btn-success btn-custom dashboard-action-btn {{ $activeClinicPanel === 'add-stock' ? 'hidden' : '' }}">Add Stock</button>
                             </div>
 
-                            <form method="POST" action="{{ route('clinic.stock.store') }}" id="add-stock-form" class="hidden">
+                            <form method="POST" action="{{ route('clinic.stock.store') }}" id="add-stock-form" class="{{ $activeClinicPanel === 'add-stock' ? '' : 'hidden' }}">
                                 @csrf
+                                <input type="hidden" name="clinic_panel" value="add-stock">
                                 <div class="d-flex justify-content-end mb-3">
                                     <button type="button" id="close-add-stock-form" class="btn btn-light btn-custom">Done</button>
                                 </div>
@@ -1090,10 +1093,10 @@
                         <p class="text-secondary board-intro-copy">Review the current stock details, remaining balance, and discussion for each medicine.</p>
 
                         <div class="d-grid gap-2 mb-3">
-                            <button type="button" id="show-stock-details" class="btn btn-primary btn-custom dashboard-action-btn">Stock Details</button>
+                            <button type="button" id="show-stock-details" class="btn btn-primary btn-custom dashboard-action-btn {{ $activeClinicPanel === 'stock-details' ? 'hidden' : '' }}">Stock Details</button>
                         </div>
 
-                        <div id="stock-details-board" class="hidden">
+                        <div id="stock-details-board" class="{{ $activeClinicPanel === 'stock-details' ? '' : 'hidden' }}">
                             <div class="d-flex justify-content-end mb-3">
                                 <button type="button" id="close-stock-details" class="btn btn-light btn-custom">Done</button>
                             </div>
@@ -1114,6 +1117,7 @@
                                         <div>Opening Stock: {{ $item->opening_stock }}</div>
                                         <div>Received: {{ $item->quantity_received > 0 ? $item->quantity_received : '' }}</div>
                                         <div>Issued: {{ $item->quantity_issued }}</div>
+                                        <div>Date Entered: {{ optional($item->firstReceipt?->received_date ?? $item->created_at)->format('F j, Y') ?? 'Not recorded' }}</div>
                                         <div>Expiry Date: {{ optional($item->expiry_date)->format('F j, Y') ?? 'Not recorded' }}</div>
                                         <div>
                                             Confirmed:
@@ -1126,9 +1130,10 @@
                                         </div>
                                     </div>
 
-                                    @if ($canCommentAndConfirmStock)
+                                    @if ($canConfirmStock)
                                         <form method="POST" action="{{ route('clinic.stock.confirm', $item) }}" class="mt-3">
                                             @csrf
+                                            <input type="hidden" name="clinic_panel" value="stock-details">
                                             <button type="submit" class="btn btn-outline-success btn-custom w-100">
                                                 {{ $item->confirmed_at ? 'Confirm Again' : 'Confirm Stock' }}
                                             </button>
@@ -1138,9 +1143,10 @@
                                     <div class="mt-4">
                                         <h6 class="mb-3">Comments and Replies</h6>
 
-                                        @if ($canCommentAndConfirmStock)
+                                        @if ($canCommentOnStock)
                                             <form method="POST" action="{{ route('clinic.stock.comment', $item) }}">
                                                 @csrf
+                                                <input type="hidden" name="clinic_panel" value="stock-details">
                                                 <label class="form-label">Add Comment</label>
                                                 <textarea name="message" rows="2" class="form-control" placeholder="Write your stock comment here..." required></textarea>
                                                 <button type="submit" class="btn btn-dark btn-custom mt-3 w-100">Post Comment</button>
@@ -1165,9 +1171,10 @@
                                                     </div>
                                                 @endforeach
 
-                                                @if ($canCommentAndConfirmStock)
+                                                @if ($canCommentOnStock)
                                                     <form method="POST" action="{{ route('clinic.stock.comment', $item) }}" class="mt-3">
                                                         @csrf
+                                                        <input type="hidden" name="clinic_panel" value="stock-details">
                                                         <input type="hidden" name="parent_id" value="{{ $comment->id }}">
                                                         <label class="form-label">Reply</label>
                                                         <textarea name="message" rows="2" class="form-control" placeholder="Write a reply..." required></textarea>
@@ -1197,7 +1204,7 @@
                         </p>
 
                         <div class="d-grid gap-2 mb-3">
-                            <button type="button" id="show-stock-usage" class="btn btn-warning btn-custom dashboard-action-btn">
+                            <button type="button" id="show-stock-usage" class="btn btn-warning btn-custom dashboard-action-btn {{ $activeClinicPanel === 'stock-usage' ? 'hidden' : '' }}">
                                 @if ($canManageClinicStock)
                                     Stock Usage Dashboard
                                 @else
@@ -1206,13 +1213,14 @@
                             </button>
                         </div>
 
-                        <div id="stock-usage-board" class="hidden">
+                        <div id="stock-usage-board" class="{{ $activeClinicPanel === 'stock-usage' ? '' : 'hidden' }}">
                             <div class="d-flex justify-content-end mb-3">
                                 <button type="button" id="close-stock-usage" class="btn btn-light btn-custom">Done</button>
                             </div>
                             @if ($canManageClinicStock)
                                 <form method="POST" action="{{ route('clinic.stock.usage.store') }}" class="mini-card mb-3">
                                     @csrf
+                                    <input type="hidden" name="clinic_panel" value="stock-usage">
                                     <div class="row g-3">
                                         <div class="col-12">
                                             <label class="form-label">Medicine</label>
@@ -1273,6 +1281,7 @@
                                                                 <button type="button" class="btn btn-sm btn-outline-primary toggle-usage-edit" data-target="edit-usage-{{ $usage->id }}">Edit</button>
                                                                 <form method="POST" action="{{ route('clinic.stock.usage.delete', $usage) }}">
                                                                     @csrf
+                                                                    <input type="hidden" name="clinic_panel" value="stock-usage">
                                                                     <button type="submit" class="btn btn-sm btn-outline-danger w-100">Delete</button>
                                                                 </form>
                                                             </div>
@@ -1284,6 +1293,7 @@
                                                         <td colspan="7">
                                                             <form method="POST" action="{{ route('clinic.stock.usage.update', $usage) }}" class="mini-card">
                                                                 @csrf
+                                                                <input type="hidden" name="clinic_panel" value="stock-usage">
                                                                 <div class="row g-3">
                                                                     <div class="col-md-4">
                                                                         <label class="form-label">Medicine</label>
@@ -1634,6 +1644,7 @@
                                                                 <tr>
                                                                     <th>Medicine</th>
                                                                     <th>Available Stock</th>
+                                                                    <th>Date Entered</th>
                                                                     <th>Expiry Date</th>
                                                                     <th>Status</th>
                                                                     <th>Action</th>
@@ -1644,11 +1655,17 @@
                                                                     <tr>
                                                                         <td>{{ $item->medicine_name ?: 'Unknown' }}</td>
                                                                         <td>{{ number_format($item->balance) }}</td>
+                                                                        <td>{{ optional($item->firstReceipt?->received_date ?? $item->created_at)->format('M j, Y') ?? 'Not recorded' }}</td>
                                                                         <td>{{ optional($item->expiry_date)->format('M j, Y') ?? 'Not recorded' }}</td>
                                                                         <td>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $item->status)) }}</td>
                                                                         <td>
                                                                             <form method="POST" action="{{ route('clinic.stock.delete', $item) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete {{ $item->medicine_name }} from stock?');">
                                                                                 @csrf
+                                                                                <input type="hidden" name="clinic_panel" value="report">
+                                                                                <input type="hidden" name="report_type" value="{{ $reportType }}">
+                                                                                <input type="hidden" name="report_year" value="{{ $reportYear }}">
+                                                                                <input type="hidden" name="report_month" value="{{ $reportMonth }}">
+                                                                                <input type="hidden" name="report_semester" value="{{ $reportSemester }}">
                                                                                 <button type="submit" class="btn-delete" title="Delete">
                                                                                     <i class="fas fa-trash-alt"></i>
                                                                                 </button>

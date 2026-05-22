@@ -38,6 +38,11 @@ class ClinicStockItem extends Model
         return $this->belongsTo(User::class, 'confirmed_by_user_id');
     }
 
+    public function firstReceipt()
+    {
+        return $this->hasOne(ClinicStockReceipt::class)->oldestOfMany('received_date');
+    }
+
     public function getBalanceAttribute(): int
     {
         return max(0, $this->opening_stock + $this->quantity_received - $this->quantity_issued);

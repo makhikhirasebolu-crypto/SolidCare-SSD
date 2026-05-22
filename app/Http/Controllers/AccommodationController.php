@@ -60,7 +60,12 @@ class AccommodationController extends Controller
 
             $admittedApplications = AccommodationApplication::with(['user', 'room'])
                 ->whereIn('status', $this->occupyingAccommodationStatuses())
-                ->latest()
+                ->leftJoin('accommodation_rooms', 'accommodation_applications.accommodation_room_id', '=', 'accommodation_rooms.id')
+                ->select('accommodation_applications.*')
+                ->orderBy('accommodation_rooms.block_name')
+                ->orderBy('accommodation_rooms.room_number')
+                ->orderBy('accommodation_applications.full_name')
+                ->orderBy('accommodation_applications.id')
                 ->get();
 
             $rooms = AccommodationRoom::withCount([

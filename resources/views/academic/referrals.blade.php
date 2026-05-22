@@ -976,7 +976,6 @@
         $studentDirectory = $studentDirectory ?? collect();
         $yearLeaderProfile = $yearLeaderProfile ?? null;
         $pendingReferrals = $referrals->filter(fn ($r) => $r->status === 'pending');
-        $resolvedReferrals = $referrals->filter(fn ($r) => $r->status === 'resolved');
         $isAttendedReferral = function ($referral) {
             $attendanceForm = $referral->ssd_attendance_form ?? [];
             $hasAttendanceSheet = ! empty(array_filter($attendanceForm, fn ($value) => filled($value)));
@@ -1002,7 +1001,8 @@
                 'referrals' => $queueAttendedReferrals,
             ],
         ];
-        $criticalReferrals = $referrals->filter(fn ($r) => $r->priority === 'Critical');
+        $urgentReferrals = $referrals->filter(fn ($r) => $r->priority === 'Urgent');
+        $normalReferrals = $referrals->filter(fn ($r) => $r->priority === 'Normal');
         $dashboardLabel = $canRefer ? 'Year Leader Referral Desk' : 'Student Support Follow-up Desk';
         $today = now()->format('Y-m-d');
         $limkokwingFaculties = config('limkokwing.faculties', []);
@@ -1064,19 +1064,19 @@
             </div>
             <div class="stat-card">
                 <div class="stat-left">
-                    <h4>Critical Priority</h4>
-                    <div class="number">{{ $criticalReferrals->count() }}</div>
-                    <small>urgent SSD attention</small>
+                    <h4>Urgent Priority</h4>
+                    <div class="number">{{ $urgentReferrals->count() }}</div>
+                    <small>needs prompt SSD attention</small>
                 </div>
                 <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
             </div>
             <div class="stat-card">
                 <div class="stat-left">
-                    <h4>Resolved Cases</h4>
-                    <div class="number">{{ $resolvedReferrals->count() }}</div>
-                    <small>attended and closed</small>
+                    <h4>Normal Priority</h4>
+                    <div class="number">{{ $normalReferrals->count() }}</div>
+                    <small>standard follow-up</small>
                 </div>
-                <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="stat-icon"><i class="fas fa-clipboard-list"></i></div>
             </div>
         </div>
 
@@ -1224,6 +1224,14 @@
                                 <div class="sheet-field">
                                     <label class="sheet-label">Date</label>
                                     <input type="date" name="referral_date" class="form-control" value="{{ old('referral_date', $today) }}" required>
+                                </div>
+                                <div class="sheet-field">
+                                    <label class="sheet-label">Referral Priority</label>
+                                    <select name="priority" class="form-select" required>
+                                        <option value="">Select Priority</option>
+                                        <option value="Urgent" @selected(old('priority') === 'Urgent')>Urgent</option>
+                                        <option value="Normal" @selected(old('priority', 'Normal') === 'Normal')>Normal</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -1398,6 +1406,11 @@
                             $attendanceValue = function ($key, $default = '') use ($attendanceForm, $usingOldAttendance) {
                                 return $usingOldAttendance ? old($key, $attendanceForm[$key] ?? $default) : ($attendanceForm[$key] ?? $default);
                             };
+                            $canCommentOnReferral = $canComment
+                                && (
+                                    in_array($user->role, ['executive', 'ssd_assistant_1', 'ssd_assistant_2'], true)
+                                    || ($user->role === 'yearleader' && (int) $referral->referred_by === (int) $user->id)
+                                );
                             $hasReferralSheet = ! empty(array_filter($referralForm, fn ($value) => filled($value)));
                             $hasAttendanceSheet = ! empty(array_filter($attendanceForm, fn ($value) => filled($value)));
                         @endphp
@@ -1735,7 +1748,7 @@
                                     <small class="time">{{ $referral->comments->count() }} note{{ $referral->comments->count() === 1 ? '' : 's' }} recorded</small>
                                 </div>
 
-                                @if ($canComment)
+                                @if ($canCommentOnReferral)
                                     <form method="POST" action="{{ route('academic.referrals.comment', $referral) }}" class="mb-3">
                                         @csrf
                                         <textarea name="message" rows="2" class="form-control mb-2" placeholder="{{ $isAbsenceNotice ? 'Add an absence review note...' : 'Add a case update or follow-up note...' }}" required></textarea>
@@ -1763,7 +1776,7 @@
                                             </div>
                                         @endforeach
 
-                                        @if ($canComment)
+                                        @if ($canCommentOnReferral)
                                             <form method="POST" action="{{ route('academic.referrals.comment', $referral) }}" class="mt-3">
                                                 @csrf
                                                 <input type="hidden" name="parent_id" value="{{ $comment->id }}">

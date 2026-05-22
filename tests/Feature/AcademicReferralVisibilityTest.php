@@ -12,7 +12,7 @@ class AcademicReferralVisibilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_yearleader_only_sees_students_they_referred_on_referral_desk(): void
+    public function test_yearleader_sees_all_referred_students_on_referral_desk(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();
 
@@ -24,10 +24,12 @@ class AcademicReferralVisibilityTest extends TestCase
         $response
             ->assertOk()
             ->assertSee($ownReferral->student_name)
-            ->assertDontSee($otherReferral->student_name);
+            ->assertSee($otherReferral->student_name)
+            ->assertSee(route('academic.referrals.comment', $ownReferral), false)
+            ->assertDontSee(route('academic.referrals.comment', $otherReferral), false);
     }
 
-    public function test_yearleader_report_only_contains_students_they_referred(): void
+    public function test_yearleader_report_contains_all_referred_students(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();
 
@@ -41,7 +43,7 @@ class AcademicReferralVisibilityTest extends TestCase
         $response
             ->assertOk()
             ->assertSee($ownReferral->student_name)
-            ->assertDontSee($otherReferral->student_name);
+            ->assertSee($otherReferral->student_name);
     }
 
     public function test_yearleader_cannot_comment_on_another_yearleaders_referral(): void
@@ -85,6 +87,36 @@ class AcademicReferralVisibilityTest extends TestCase
             'student_referral_id' => $ownReferral->id,
             'user_id' => $yearLeader->id,
             'message' => 'Following up with SSD.',
+        ]);
+    }
+
+    public function test_yearleader_selects_referral_priority_when_creating_referral(): void
+    {
+        [$yearLeader] = $this->createYearLeaders();
+
+        $response = $this->actingAs($yearLeader)
+            ->from(route('academic.referrals'))
+            ->post(route('academic.referrals.store'), [
+                'student_first_name' => 'Urgent',
+                'student_surname' => 'Student',
+                'student_identity_number' => 'urgent-student-001',
+                'year_leader_name' => $yearLeader->name,
+                'priority' => 'Urgent',
+                'reasons_for_referral' => 'Needs urgent academic support.',
+                'problem_identified_when' => 'Today',
+                'action_taken' => 'Spoke with the student.',
+                'referral_date' => now()->toDateString(),
+            ]);
+
+        $response
+            ->assertRedirect(route('academic.referrals'))
+            ->assertSessionHas('success', 'Student referral submitted successfully!');
+
+        $this->assertDatabaseHas('student_referrals', [
+            'student_name' => 'Urgent Student',
+            'student_id' => 'urgent-student-001',
+            'priority' => 'Urgent',
+            'referred_by' => $yearLeader->id,
         ]);
     }
 

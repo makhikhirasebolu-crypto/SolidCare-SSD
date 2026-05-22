@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ClinicStockItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -74,5 +75,45 @@ class ClinicAccessTest extends TestCase
         $response->assertSee('Health & Clinic', false);
         $response->assertDontSee('Access Clinic');
         $response->assertSee('Authorized staff only');
+    }
+
+    public function test_senior_nurse_cannot_confirm_stock(): void
+    {
+        $nurse = User::create([
+            'name' => 'Tau Tau',
+            'email' => 'nurse@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'senior_nurse_officer',
+        ]);
+
+        $item = ClinicStockItem::create([
+            'medicine_name' => 'Panado',
+            'opening_stock' => 100,
+            'quantity_received' => 20,
+            'quantity_issued' => 5,
+            'status' => 'in_stock',
+        ]);
+
+        $response = $this->actingAs($nurse)->get(route('clinic', [
+            'clinic_panel' => 'stock-details',
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('Add Comment');
+        $response->assertDontSee('Confirm Stock');
+
+        $confirmResponse = $this->actingAs($nurse)->post(route('clinic.stock.confirm', $item), [
+            'clinic_panel' => 'stock-details',
+        ]);
+
+        $confirmResponse->assertRedirect(route('home'));
+        $this->assertDatabaseHas('clinic_stock_items', [
+            'id' => $item->id,
+            'opening_stock' => 100,
+            'quantity_received' => 20,
+            'confirmed_by_user_id' => null,
+            'confirmed_at' => null,
+        ]);
     }
 }

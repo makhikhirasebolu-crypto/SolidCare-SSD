@@ -138,6 +138,138 @@ class AccommodationReallocationTest extends TestCase
             ->assertSee('Student Resident');
     }
 
+    public function test_warden_admitted_students_are_arranged_by_allocated_room(): void
+    {
+        $warden = $this->createWarden();
+
+        $afOne = AccommodationRoom::create([
+            'block_name' => 'AF',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+        $afTwo = AccommodationRoom::create([
+            'block_name' => 'AF',
+            'room_number' => 2,
+            'capacity' => 4,
+        ]);
+        $agOne = AccommodationRoom::create([
+            'block_name' => 'AG',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+
+        $this->createApplicationForRoom('Gamma Student', $agOne);
+        $this->createApplicationForRoom('Alpha Student', $afOne);
+        $this->createApplicationForRoom('Beta Student', $afTwo);
+
+        $response = $this->actingAs($warden)->get(route('accommodation'));
+
+        $response
+            ->assertOk()
+            ->assertSeeInOrder(['Alpha Student', 'AF-01', 'Beta Student', 'AF-02', 'Gamma Student', 'AG-01']);
+    }
+
+    public function test_warden_and_ssd_assistant_2_can_communicate_in_accommodation(): void
+    {
+        $warden = $this->createWarden();
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant2-chat@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $response = $this->actingAs($warden)
+            ->from(route('accommodation'))
+            ->post(route('accommodation.messages.store'), [
+                'message' => 'Please check AF-02 reallocation before end of day.',
+            ]);
+
+        $response
+            ->assertRedirect(route('accommodation'))
+            ->assertSessionHas('success', 'Accommodation message sent successfully.');
+
+        $this->assertDatabaseHas('accommodation_messages', [
+            'user_id' => $warden->id,
+            'message' => 'Please check AF-02 reallocation before end of day.',
+        ]);
+
+        $viewResponse = $this->actingAs($assistant)->get(route('accommodation'));
+
+        $viewResponse
+            ->assertOk()
+            ->assertSee('Warden and SSD Assistant 2 Communication')
+            ->assertSee('Please check AF-02 reallocation before end of day.')
+            ->assertSee('Warden User');
+    }
+
+    public function test_accommodation_messages_allow_replies(): void
+    {
+        $warden = $this->createWarden();
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant2-reply@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $this->actingAs($warden)->post(route('accommodation.messages.store'), [
+            'message' => 'Please attend the students waiting for accommodation support.',
+        ]);
+
+        $parentMessage = \App\Models\AccommodationMessage::whereNull('parent_id')->firstOrFail();
+
+        $response = $this->actingAs($assistant)
+            ->from(route('accommodation'))
+            ->post(route('accommodation.messages.store'), [
+                'parent_id' => $parentMessage->id,
+                'message' => 'I will attend them and update the room list.',
+            ]);
+
+        $response
+            ->assertRedirect(route('accommodation'))
+            ->assertSessionHas('success', 'Accommodation reply sent successfully.');
+
+        $this->assertDatabaseHas('accommodation_messages', [
+            'parent_id' => $parentMessage->id,
+            'user_id' => $assistant->id,
+            'message' => 'I will attend them and update the room list.',
+        ]);
+
+        $viewResponse = $this->actingAs($warden)->get(route('accommodation'));
+
+        $viewResponse
+            ->assertOk()
+            ->assertSee('Please attend the students waiting for accommodation support.')
+            ->assertSee('I will attend them and update the room list.')
+            ->assertSee('Reply');
+    }
+
+    public function test_executive_cannot_post_accommodation_communication_message(): void
+    {
+        $executive = User::create([
+            'name' => 'Executive User',
+            'email' => 'executive-chat@example.com',
+            'password' => 'password123',
+            'role' => 'executive',
+        ]);
+
+        $response = $this->actingAs($executive)
+            ->from(route('accommodation'))
+            ->post(route('accommodation.messages.store'), [
+                'message' => 'This should not be posted.',
+            ]);
+
+        $response
+            ->assertRedirect(route('accommodation'))
+            ->assertSessionHas('error', 'Only the warden and SSD Assistant 2 can use accommodation communication.');
+
+        $this->assertDatabaseMissing('accommodation_messages', [
+            'user_id' => $executive->id,
+            'message' => 'This should not be posted.',
+        ]);
+    }
+
     private function createAdmittedApplication(): array
     {
         $student = User::create([
@@ -182,6 +314,38 @@ class AccommodationReallocationTest extends TestCase
         ]);
 
         return [$student, $application, $currentRoom, $requestedRoom];
+    }
+
+    private function createApplicationForRoom(string $studentName, AccommodationRoom $room): AccommodationApplication
+    {
+        $student = User::create([
+            'name' => $studentName,
+            'email' => str_replace(' ', '.', strtolower($studentName)) . '@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'new',
+            'student_id' => str_replace(' ', '-', strtolower($studentName)),
+            'disability' => 'no',
+        ]);
+
+        return AccommodationApplication::create([
+            'user_id' => $student->id,
+            'accommodation_room_id' => $room->id,
+            'full_name' => $studentName,
+            'contact_number' => '58000010',
+            'national_id' => '1234567890110',
+            'email' => str_replace(' ', '.', strtolower($studentName)) . '.application@example.com',
+            'marital_status' => 'Single',
+            'nationality' => 'Mosotho',
+            'age' => 20,
+            'faculty' => 'Science and Technology',
+            'programme' => 'Bachelor of Information Technology',
+            'intake' => 'January ' . now()->year,
+            'check_in_date' => now()->subDays(5)->toDateString(),
+            'address' => 'Roma, Lesotho',
+            'status' => 'admitted',
+        ]);
     }
 
     private function createWarden(): User

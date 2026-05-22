@@ -140,6 +140,59 @@
                 border-radius: 0.8rem;
                 padding: 0.85rem 1rem;
             }
+            .message-board {
+                display: grid;
+                gap: 1rem;
+            }
+            .message-form {
+                display: grid;
+                gap: 0.75rem;
+            }
+            .message-list {
+                display: grid;
+                gap: 0.75rem;
+                margin-top: 1rem;
+            }
+            .message-card {
+                background: #eef2ff;
+                border: 1px solid rgba(99, 102, 241, 0.14);
+                border-radius: 0.9rem;
+                padding: 0.9rem;
+            }
+            .message-meta {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: space-between;
+                gap: 0.5rem;
+                color: #64748b;
+                font-size: 0.82rem;
+                margin-bottom: 0.45rem;
+            }
+            .message-meta strong {
+                color: #0f172a;
+            }
+            .message-card p {
+                margin: 0;
+                white-space: pre-wrap;
+            }
+            .message-replies {
+                display: grid;
+                gap: 0.65rem;
+                margin-top: 0.85rem;
+                padding-left: 1rem;
+                border-left: 3px solid rgba(59, 130, 246, 0.22);
+            }
+            .message-reply {
+                background: #f8fafc;
+                border: 1px solid #dbeafe;
+                border-radius: 0.85rem;
+                padding: 0.75rem;
+            }
+            .reply-form {
+                display: grid;
+                gap: 0.55rem;
+                margin-top: 0.85rem;
+            }
             .info-label {
                 display: block;
                 margin-bottom: 0.3rem;
@@ -189,6 +242,79 @@
                     @endforeach
                 </div>
             @endif
+
+            <h3 class="section-title">Warden and SSD Assistant 2 Communication</h3>
+
+            <div class="panel-card p-4 mb-5 message-board">
+                <form method="POST" action="{{ route('accommodation.messages.store') }}" class="message-form">
+                    @csrf
+                    <label for="accommodation-message" class="form-label fw-semibold mb-0">Message</label>
+                    <textarea
+                        id="accommodation-message"
+                        name="message"
+                        rows="3"
+                        class="form-control"
+                        maxlength="2000"
+                        placeholder="Write an accommodation update for the warden or SSD Assistant 2..."
+                        required
+                    >{{ old('message') }}</textarea>
+                    <div>
+                        <button type="submit" class="btn btn-primary btn-custom">Send Message</button>
+                    </div>
+                </form>
+
+                <div class="message-list">
+                    @forelse (($accommodationMessages ?? collect()) as $message)
+                        <article class="message-card">
+                            <div class="message-meta">
+                                <strong>
+                                    {{ optional($message->user)->name ?? 'Accommodation Staff' }}
+                                    <span class="text-secondary">({{ \Illuminate\Support\Str::headline(optional($message->user)->role ?? 'staff') }})</span>
+                                </strong>
+                                <span>{{ $message->created_at->format('F j, Y g:i A') }}</span>
+                            </div>
+                            <p>{{ $message->message }}</p>
+
+                            @if ($message->replies->isNotEmpty())
+                                <div class="message-replies">
+                                    @foreach ($message->replies as $reply)
+                                        <div class="message-reply">
+                                            <div class="message-meta">
+                                                <strong>
+                                                    {{ optional($reply->user)->name ?? 'Accommodation Staff' }}
+                                                    <span class="text-secondary">({{ \Illuminate\Support\Str::headline(optional($reply->user)->role ?? 'staff') }})</span>
+                                                </strong>
+                                                <span>{{ $reply->created_at->format('F j, Y g:i A') }}</span>
+                                            </div>
+                                            <p>{{ $reply->message }}</p>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+
+                            <form method="POST" action="{{ route('accommodation.messages.store') }}" class="reply-form">
+                                @csrf
+                                <input type="hidden" name="parent_id" value="{{ $message->id }}">
+                                <label for="reply-message-{{ $message->id }}" class="form-label fw-semibold mb-0">Reply</label>
+                                <textarea
+                                    id="reply-message-{{ $message->id }}"
+                                    name="message"
+                                    rows="2"
+                                    class="form-control form-control-sm"
+                                    maxlength="2000"
+                                    placeholder="Write a reply..."
+                                    required
+                                ></textarea>
+                                <div>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Reply</button>
+                                </div>
+                            </form>
+                        </article>
+                    @empty
+                        <p class="mb-0 text-secondary">No accommodation messages yet.</p>
+                    @endforelse
+                </div>
+            </div>
 
             <h3 class="section-title">Room Reallocation Requests</h3>
 
