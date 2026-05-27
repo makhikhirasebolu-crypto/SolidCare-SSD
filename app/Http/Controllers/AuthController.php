@@ -1008,10 +1008,11 @@ class AuthController extends Controller
 
             $paymentReportApplication = $this->findAccommodationPaymentReportApplication(
                 $user,
-                $request->query('payment_student_id')
+                $request->query('payment_full_name')
             );
+            $confirmedPaymentReports = $this->confirmedAccommodationPaymentReports()->get();
 
-            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages', 'paymentReportApplication'));
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages', 'paymentReportApplication', 'confirmedPaymentReports'));
         }
 
         $availableRooms = $application
@@ -1353,7 +1354,7 @@ class AuthController extends Controller
                 ->with('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
         }
 
-        $applications = $this->makaungAdmittedAccommodationApplications()
+        $applications = $this->admittedAccommodationPaymentApplications()
             ->latest('payment_confirmed_at')
             ->latest('updated_at')
             ->latest('id')
@@ -1388,14 +1389,14 @@ class AuthController extends Controller
                 ->with('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
         }
 
-        $application = $this->makaungAdmittedAccommodationApplications()
+        $application = $this->admittedAccommodationPaymentApplications()
             ->where('accommodation_applications.id', $application->id)
             ->first();
 
         if (! $application) {
             return redirect()
                 ->route('accommodation.payment-report')
-                ->with('error', 'Only admitted students staying in Makaung can be confirmed from this report.');
+                ->with('error', 'Only admitted accommodation students can be confirmed from this report.');
         }
 
         $data = $request->validate([
@@ -1420,7 +1421,7 @@ class AuthController extends Controller
             ->with('success', 'Payment receipt confirmed for ' . $application->full_name . '.');
     }
 
-    public function confirmAccommodationPaymentByStudentId(Request $request)
+    public function confirmAccommodationPaymentByFullName(Request $request)
     {
         if (! Auth::guard('web')->check()) {
             return redirect()->route('login');
@@ -1436,7 +1437,7 @@ class AuthController extends Controller
         }
 
         $data = $request->validate([
-            'student_id' => ['required', 'string', 'max:100'],
+            'full_name' => ['required', 'string', 'max:255'],
             'payment_receipt_number' => [
                 'required',
                 'string',
@@ -1445,14 +1446,14 @@ class AuthController extends Controller
             ],
         ]);
 
-        $studentId = trim($data['student_id']);
-        $application = $this->admittedAccommodationApplicationForStudentId($studentId);
+        $fullName = trim($data['full_name']);
+        $application = $this->admittedAccommodationApplicationForFullName($fullName);
 
         if (! $application) {
             return redirect()
                 ->route('accommodation')
-                ->withInput($request->only('student_id'))
-                ->with('error', 'No admitted accommodation student was found for Student ID ' . $studentId . '.');
+                ->withInput($request->only('full_name'))
+                ->with('error', 'No admitted accommodation student was found for Full Name ' . $fullName . '.');
         }
 
         $application->update([
@@ -1464,7 +1465,7 @@ class AuthController extends Controller
         ]);
 
         return redirect()
-            ->route('accommodation', ['payment_student_id' => $studentId])
+            ->route('accommodation', ['payment_full_name' => $fullName])
             ->with('success', 'Payment receipt confirmed for ' . $application->full_name . '.');
     }
 
@@ -2944,28 +2945,44 @@ class AuthController extends Controller
             });
     }
 
-    protected function findAccommodationPaymentReportApplication(User $user, mixed $studentId): ?AccommodationApplication
+    protected function admittedAccommodationPaymentApplications()
     {
-        if (! $this->canConfirmAccommodationPayments($user) || ! is_string($studentId) || trim($studentId) === '') {
+        return AccommodationApplication::with(['user', 'room', 'paymentConfirmedBy'])
+            ->where('status', 'admitted');
+    }
+
+    protected function confirmedAccommodationPaymentReports()
+    {
+        return $this->admittedAccommodationPaymentApplications()
+            ->whereNotNull('payment_receipt_number')
+            ->where('payment_receipt_number', '!=', '')
+            ->latest('payment_confirmed_at')
+            ->latest('updated_at')
+            ->latest('id');
+    }
+
+    protected function findAccommodationPaymentReportApplication(User $user, mixed $fullName): ?AccommodationApplication
+    {
+        if (! $this->canConfirmAccommodationPayments($user) || ! is_string($fullName) || trim($fullName) === '') {
             return null;
         }
 
-        return $this->admittedAccommodationApplicationForStudentId($studentId);
+        return $this->admittedAccommodationApplicationForFullName($fullName);
     }
 
-    protected function admittedAccommodationApplicationForStudentId(string $studentId): ?AccommodationApplication
+    protected function admittedAccommodationApplicationForFullName(string $fullName): ?AccommodationApplication
     {
-        $studentId = trim($studentId);
+        $fullName = trim($fullName);
 
-        if ($studentId === '') {
+        if ($fullName === '') {
             return null;
         }
 
         return AccommodationApplication::with(['user', 'room', 'admissionProcessedBy', 'paymentConfirmedBy'])
             ->where('status', 'admitted')
-            ->where(function ($query) use ($studentId) {
-                $query->where('student_id', $studentId)
-                    ->orWhereHas('user', fn ($userQuery) => $userQuery->where('student_id', $studentId));
+            ->where(function ($query) use ($fullName) {
+                $query->whereRaw('LOWER(TRIM(full_name)) = ?', [Str::lower($fullName)])
+                    ->orWhereHas('user', fn ($userQuery) => $userQuery->whereRaw('LOWER(TRIM(name)) = ?', [Str::lower($fullName)]));
             })
             ->latest('updated_at')
             ->latest('id')

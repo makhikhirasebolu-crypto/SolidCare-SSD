@@ -138,7 +138,7 @@ class AccommodationReallocationTest extends TestCase
             ->assertSee('Student Resident');
     }
 
-    public function test_ssd_assistant_2_can_view_makaung_payment_report_only_for_admitted_students(): void
+    public function test_ssd_assistant_2_can_view_payment_report_for_admitted_students_only(): void
     {
         $assistant = User::create([
             'name' => 'SSD Assistant Two',
@@ -168,9 +168,11 @@ class AccommodationReallocationTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('Accommodation Payment Report')
+            ->assertSee('Admitted Students')
             ->assertSee('Makaung Resident')
             ->assertSee('Makaung-01')
-            ->assertDontSee('Other Resident')
+            ->assertSee('Other Resident')
+            ->assertSee('AG-01')
             ->assertDontSee('Pending Makaung');
     }
 
@@ -204,6 +206,60 @@ class AccommodationReallocationTest extends TestCase
             'payment_status' => 'confirmed',
             'payment_confirmed_by_user_id' => $assistant->id,
         ]);
+    }
+
+    public function test_ssd_assistant_2_confirms_payment_from_overview_with_full_name_and_receipt_number(): void
+    {
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant2-overview-confirm@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $room = AccommodationRoom::create([
+            'block_name' => 'AF',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+        $application = $this->createApplicationForRoom('Overview Paid Student', $room);
+        $application->update([
+            'student_id' => '20261234',
+            'payment_amount' => 105,
+            'payment_method' => 'mpesa',
+        ]);
+
+        $response = $this->actingAs($assistant)->post(route('accommodation.payment-receipts.confirm'), [
+            'full_name' => 'Overview Paid Student',
+            'payment_receipt_number' => 'AF-REC-2026-77',
+        ]);
+
+        $response
+            ->assertRedirect(route('accommodation', ['payment_full_name' => 'Overview Paid Student']))
+            ->assertSessionHas('success', 'Payment receipt confirmed for Overview Paid Student.');
+
+        $this->assertDatabaseHas('accommodation_applications', [
+            'id' => $application->id,
+            'payment_receipt_number' => 'AF-REC-2026-77',
+            'payment_status' => 'confirmed',
+            'payment_confirmed_by_user_id' => $assistant->id,
+        ]);
+
+        $viewResponse = $this->actingAs($assistant)->get(route('accommodation', [
+            'payment_full_name' => 'Overview Paid Student',
+        ]));
+
+        $viewResponse
+            ->assertOk()
+            ->assertSee('Payment Receipt Confirmation')
+            ->assertSee('Student Payment Report')
+            ->assertSee('Confirmed Payment Report')
+            ->assertSee('Overview Paid Student')
+            ->assertSee('20261234')
+            ->assertSee('AF-REC-2026-77')
+            ->assertSee('M 105.00')
+            ->assertSee('MPESA')
+            ->assertSee('AF-01');
     }
 
     public function test_warden_cannot_confirm_accommodation_payments(): void

@@ -37,7 +37,7 @@ Route::get('/accommodation/report', [AuthController::class, 'accommodationReport
 Route::get('/accommodation/report/download', [AuthController::class, 'downloadAccommodationReport'])->name('accommodation.report.download');
 Route::get('/accommodation/payment-report', [AuthController::class, 'accommodationPaymentReport'])->name('accommodation.payment-report');
 Route::post('/accommodation/payment-report/{application}/confirm', [AuthController::class, 'confirmAccommodationPayment'])->name('accommodation.payment-report.confirm');
-Route::post('/accommodation/payment-receipts/confirm', [AuthController::class, 'confirmAccommodationPaymentByStudentId'])->name('accommodation.payment-receipts.confirm');
+Route::post('/accommodation/payment-receipts/confirm', [AuthController::class, 'confirmAccommodationPaymentByFullName'])->name('accommodation.payment-receipts.confirm');
 Route::post('/accommodation/messages', [AuthController::class, 'storeAccommodationMessage'])->name('accommodation.messages.store');
 Route::get('/accommodation/pending-admissions', [AuthController::class, 'pendingAdmissions'])->name('student.accommodation.pending');
 Route::get('/accommodation/rooms', [AuthController::class, 'roomManagement'])->name('student.accommodation.rooms');

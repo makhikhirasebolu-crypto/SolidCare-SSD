@@ -218,7 +218,7 @@
                 <div>
                     <span class="eyebrow">SSD Assistant 2</span>
                     <h1>Accommodation Payment Report</h1>
-                    <p>Confirm receipt numbers for admitted students currently assigned to Makaung accommodation rooms.</p>
+                    <p>Confirm receipt numbers for admitted accommodation students and review saved payment details.</p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="{{ route('accommodation') }}" class="btn btn-outline-light btn-custom">Back</a>
@@ -243,7 +243,7 @@
 
             <div class="kpis">
                 <article class="panel kpi" style="--accent: var(--blue);">
-                    <small>Makaung Admitted Students</small>
+                    <small>Admitted Students</small>
                     <strong>{{ number_format($applications->count()) }}</strong>
                     <span class="subtle">Students retrieved from admitted accommodation records.</span>
                 </article>
@@ -262,7 +262,7 @@
             <section class="panel section">
                 <div class="section-header">
                     <div>
-                        <h2>Makaung Payment Confirmation</h2>
+                        <h2>Payment Confirmation</h2>
                         <p>Enter the official receipt number against the matching admitted student.</p>
                     </div>
                 </div>
@@ -322,7 +322,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8">No admitted students are currently assigned to Makaung rooms.</td>
+                                    <td colspan="8">No admitted accommodation students are currently available for payment confirmation.</td>
                                 </tr>
                             @endforelse
                         </tbody>
