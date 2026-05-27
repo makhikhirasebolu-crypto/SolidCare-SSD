@@ -138,6 +138,85 @@ class AccommodationReallocationTest extends TestCase
             ->assertSee('Student Resident');
     }
 
+    public function test_ssd_assistant_2_can_view_makaung_payment_report_only_for_admitted_students(): void
+    {
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant2-payments@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $makaungRoom = AccommodationRoom::create([
+            'block_name' => 'Makaung',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+        $otherRoom = AccommodationRoom::create([
+            'block_name' => 'AG',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+
+        $this->createApplicationForRoom('Makaung Resident', $makaungRoom);
+        $this->createApplicationForRoom('Other Resident', $otherRoom);
+        $pendingMakaung = $this->createApplicationForRoom('Pending Makaung', $makaungRoom);
+        $pendingMakaung->update(['status' => 'pending']);
+
+        $response = $this->actingAs($assistant)->get(route('accommodation.payment-report'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Accommodation Payment Report')
+            ->assertSee('Makaung Resident')
+            ->assertSee('Makaung-01')
+            ->assertDontSee('Other Resident')
+            ->assertDontSee('Pending Makaung');
+    }
+
+    public function test_ssd_assistant_2_confirms_makaung_payment_with_receipt_number(): void
+    {
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant2-confirm@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $makaungRoom = AccommodationRoom::create([
+            'block_name' => 'Makaung',
+            'room_number' => 2,
+            'capacity' => 4,
+        ]);
+        $application = $this->createApplicationForRoom('Paid Makaung Resident', $makaungRoom);
+
+        $response = $this->actingAs($assistant)->post(route('accommodation.payment-report.confirm', $application), [
+            'payment_receipt_number' => 'RCPT-2026-001',
+        ]);
+
+        $response
+            ->assertRedirect(route('accommodation.payment-report'))
+            ->assertSessionHas('success', 'Payment receipt confirmed for Paid Makaung Resident.');
+
+        $this->assertDatabaseHas('accommodation_applications', [
+            'id' => $application->id,
+            'payment_receipt_number' => 'RCPT-2026-001',
+            'payment_status' => 'confirmed',
+            'payment_confirmed_by_user_id' => $assistant->id,
+        ]);
+    }
+
+    public function test_warden_cannot_confirm_accommodation_payments(): void
+    {
+        $warden = $this->createWarden();
+
+        $response = $this->actingAs($warden)->get(route('accommodation.payment-report'));
+
+        $response
+            ->assertRedirect(route('accommodation'))
+            ->assertSessionHas('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
+    }
+
     public function test_warden_admitted_students_are_arranged_by_allocated_room(): void
     {
         $warden = $this->createWarden();

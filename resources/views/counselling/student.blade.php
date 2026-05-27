@@ -205,6 +205,11 @@
         color: #991b1b;
     }
 
+    .chat-message.typing {
+        color: #64748b;
+        font-style: italic;
+    }
+
     .form-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -425,9 +430,7 @@
         <p class="panel-copy mb-0 mt-3" id="active-emergency-model-description">{{ $emergencyChatMeta['model_description'] }}</p>
     </div>
 
-    <div class="message-board" id="emergency-chat-board" aria-live="polite">
-        <div class="chat-message assistant">Hi. I am here to help you think this through. Tell me what feels hardest right now: exams, workload, relationships, money, or just feeling overwhelmed.</div>
-    </div>
+    <div class="message-board" id="emergency-chat-board" aria-live="polite"></div>
 
     <form id="emergency-chat-form" class="mt-3">
         <div class="mb-3">
@@ -795,12 +798,15 @@
         const modelProvider = document.getElementById('active-emergency-model-provider');
         const modelDescription = document.getElementById('active-emergency-model-description');
         const emergencyReplyUrl = @json(route('counselling.emergency.reply', [], false));
-        const conversation = [
-            {
-                role: 'assistant',
-                content: 'Hi. I am here to help you think this through. Tell me what feels hardest right now: exams, workload, relationships, money, or just feeling overwhelmed.'
-            }
-        ];
+        const initialChatMessages = @json(($chatMessages ?? collect())->map(fn ($message) => [
+            'role' => $message->role,
+            'content' => $message->content,
+        ])->values());
+        const welcomeChatMessage = {
+            role: 'assistant',
+            content: 'Hi. I am here to help you think this through. Tell me what feels hardest right now: exams, workload, relationships, money, or just feeling overwhelmed.'
+        };
+        const conversation = initialChatMessages.length > 0 ? [...initialChatMessages] : [welcomeChatMessage];
 
         const appendMessage = function (role, content, extraClass) {
             if (!chatBoard) {
@@ -813,6 +819,24 @@
             chatBoard.appendChild(message);
             chatBoard.scrollTop = chatBoard.scrollHeight;
         };
+
+        const removeTypingMessage = function () {
+            document.getElementById('emergency-chat-typing')?.remove();
+        };
+
+        const showTypingMessage = function () {
+            removeTypingMessage();
+            appendMessage('assistant', 'Support is responding...', 'typing');
+            const typingMessage = chatBoard ? chatBoard.lastElementChild : null;
+
+            if (typingMessage) {
+                typingMessage.id = 'emergency-chat-typing';
+            }
+        };
+
+        conversation.forEach(function (message) {
+            appendMessage(message.role, message.content);
+        });
 
         if (chatForm && chatInput && sendButton) {
             chatForm.addEventListener('submit', async function (event) {
@@ -828,6 +852,7 @@
                 chatInput.value = '';
                 sendButton.disabled = true;
                 sendButton.textContent = 'Sending...';
+                showTypingMessage();
 
                 try {
                     const response = await fetch(emergencyReplyUrl, {
@@ -852,6 +877,8 @@
                         throw new Error(data.message || 'Student support chat is unavailable right now.');
                     }
 
+                    removeTypingMessage();
+
                     if (modelLabel && data.model_label) {
                         modelLabel.textContent = data.model_label;
                     }
@@ -867,6 +894,7 @@
                     appendMessage('assistant', data.reply);
                     conversation.push({ role: 'assistant', content: data.reply });
                 } catch (error) {
+                    removeTypingMessage();
                     appendMessage('error', error.message || 'Student support chat is unavailable right now.', 'error');
                 } finally {
                     sendButton.disabled = false;

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\CounsellingSessionScheduled;
 use App\Models\CounsellingBooking;
+use App\Models\ChatMessage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -351,6 +352,49 @@ class CounsellingTest extends TestCase
             'model' => 'gpt-5.4-mini',
             'model_label' => 'SolidCare Fine-Tuned Counselling Model',
         ]);
+
+        $this->assertDatabaseHas('chat_messages', [
+            'user_id' => $user->id,
+            'role' => 'user',
+            'content' => 'I feel overwhelmed and I need help calming down.',
+        ]);
+        $this->assertDatabaseHas('chat_messages', [
+            'user_id' => $user->id,
+            'role' => 'assistant',
+            'content' => 'Take one slow breath with me. Tell me the strongest feeling you have right now.',
+        ]);
+    }
+
+    public function test_student_chat_board_loads_saved_chat_messages(): void
+    {
+        $user = User::create([
+            'name' => 'Nthati Lehana',
+            'email' => 'saved-chat@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015688',
+            'disability' => 'no',
+        ]);
+
+        ChatMessage::create([
+            'user_id' => $user->id,
+            'role' => 'user',
+            'content' => 'I need help planning my revision.',
+        ]);
+        ChatMessage::create([
+            'user_id' => $user->id,
+            'role' => 'assistant',
+            'content' => 'Let us make a small revision plan.',
+        ]);
+
+        $response = $this->actingAs($user)->get(route('counselling'));
+
+        $response
+            ->assertOk()
+            ->assertSee('I need help planning my revision.')
+            ->assertSee('Let us make a small revision plan.');
     }
 
     public function test_new_student_cannot_access_counselling_options(): void

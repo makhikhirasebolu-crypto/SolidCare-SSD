@@ -922,7 +922,7 @@ class AuthController extends Controller
             ->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
     }
 
-    public function accommodation()
+    public function accommodation(Request $request)
     {
         if (!Auth::guard('web')->check()) {
             return redirect()->route('login');
@@ -969,7 +969,7 @@ class AuthController extends Controller
         if ($this->canManageAccommodationRooms($user)) {
             $this->ensureDefaultAccommodationRoomsExist();
 
-            $admittedApplications = AccommodationApplication::with(['user', 'room', 'previousRoom', 'admissionProcessedBy', 'reallocationApprovedBy', 'roomReallocatedBy'])
+            $admittedApplications = AccommodationApplication::with(['user', 'room', 'previousRoom', 'admissionProcessedBy', 'reallocationApprovedBy', 'roomReallocatedBy', 'paymentConfirmedBy'])
                 ->whereIn('status', $this->occupyingAccommodationStatuses())
                 ->leftJoin('accommodation_rooms', 'accommodation_applications.accommodation_room_id', '=', 'accommodation_rooms.id')
                 ->select('accommodation_applications.*')
@@ -1006,7 +1006,12 @@ class AuthController extends Controller
                     ->values()
                 : collect();
 
-            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages'));
+            $paymentReportApplication = $this->findAccommodationPaymentReportApplication(
+                $user,
+                $request->query('payment_student_id')
+            );
+
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages', 'paymentReportApplication'));
         }
 
         $availableRooms = $application
@@ -1331,6 +1336,136 @@ class AuthController extends Controller
         $this->ensureDefaultAccommodationRoomsExist();
 
         return redirect()->route('student.accommodation.rooms')->with('success', 'Default room blocks AG and AF have been created with 15 rooms each.');
+    }
+
+    public function accommodationPaymentReport()
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canConfirmAccommodationPayments($user)) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
+        }
+
+        $applications = $this->makaungAdmittedAccommodationApplications()
+            ->latest('payment_confirmed_at')
+            ->latest('updated_at')
+            ->latest('id')
+            ->get();
+
+        $confirmedPaymentsCount = $applications
+            ->filter(fn (AccommodationApplication $application) => filled($application->payment_receipt_number))
+            ->count();
+
+        $pendingPaymentsCount = $applications->count() - $confirmedPaymentsCount;
+
+        return view('accommodation.payment-report', compact(
+            'user',
+            'applications',
+            'confirmedPaymentsCount',
+            'pendingPaymentsCount'
+        ));
+    }
+
+    public function confirmAccommodationPayment(Request $request, AccommodationApplication $application)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canConfirmAccommodationPayments($user)) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
+        }
+
+        $application = $this->makaungAdmittedAccommodationApplications()
+            ->where('accommodation_applications.id', $application->id)
+            ->first();
+
+        if (! $application) {
+            return redirect()
+                ->route('accommodation.payment-report')
+                ->with('error', 'Only admitted students staying in Makaung can be confirmed from this report.');
+        }
+
+        $data = $request->validate([
+            'payment_receipt_number' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('accommodation_applications', 'payment_receipt_number')->ignore($application->id),
+            ],
+        ]);
+
+        $application->update([
+            'payment_receipt_number' => trim($data['payment_receipt_number']),
+            'payment_status' => 'confirmed',
+            'payment_confirmed_by_user_id' => $user->id,
+            'payment_confirmed_at' => now(),
+            'paid_at' => $application->paid_at ?? now(),
+        ]);
+
+        return redirect()
+            ->route('accommodation.payment-report')
+            ->with('success', 'Payment receipt confirmed for ' . $application->full_name . '.');
+    }
+
+    public function confirmAccommodationPaymentByStudentId(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canConfirmAccommodationPayments($user)) {
+            return redirect()
+                ->route('accommodation')
+                ->with('error', 'Only SSD Assistant 2 can confirm accommodation payments.');
+        }
+
+        $data = $request->validate([
+            'student_id' => ['required', 'string', 'max:100'],
+            'payment_receipt_number' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('accommodation_applications', 'payment_receipt_number'),
+            ],
+        ]);
+
+        $studentId = trim($data['student_id']);
+        $application = $this->admittedAccommodationApplicationForStudentId($studentId);
+
+        if (! $application) {
+            return redirect()
+                ->route('accommodation')
+                ->withInput($request->only('student_id'))
+                ->with('error', 'No admitted accommodation student was found for Student ID ' . $studentId . '.');
+        }
+
+        $application->update([
+            'payment_receipt_number' => trim($data['payment_receipt_number']),
+            'payment_status' => 'confirmed',
+            'payment_confirmed_by_user_id' => $user->id,
+            'payment_confirmed_at' => now(),
+            'paid_at' => $application->paid_at ?? now(),
+        ]);
+
+        return redirect()
+            ->route('accommodation', ['payment_student_id' => $studentId])
+            ->with('success', 'Payment receipt confirmed for ' . $application->full_name . '.');
     }
 
     protected function ensureDefaultAccommodationRoomsExist(): void
@@ -2793,6 +2928,48 @@ class AuthController extends Controller
     protected function canGenerateAccommodationReport(User $user): bool
     {
         return in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
+    }
+
+    protected function canConfirmAccommodationPayments(User $user): bool
+    {
+        return $user->role === 'ssd_assistant_2';
+    }
+
+    protected function makaungAdmittedAccommodationApplications()
+    {
+        return AccommodationApplication::with(['user', 'room', 'paymentConfirmedBy'])
+            ->where('status', 'admitted')
+            ->whereHas('room', function ($query) {
+                $query->whereRaw('LOWER(block_name) = ?', ['makaung']);
+            });
+    }
+
+    protected function findAccommodationPaymentReportApplication(User $user, mixed $studentId): ?AccommodationApplication
+    {
+        if (! $this->canConfirmAccommodationPayments($user) || ! is_string($studentId) || trim($studentId) === '') {
+            return null;
+        }
+
+        return $this->admittedAccommodationApplicationForStudentId($studentId);
+    }
+
+    protected function admittedAccommodationApplicationForStudentId(string $studentId): ?AccommodationApplication
+    {
+        $studentId = trim($studentId);
+
+        if ($studentId === '') {
+            return null;
+        }
+
+        return AccommodationApplication::with(['user', 'room', 'admissionProcessedBy', 'paymentConfirmedBy'])
+            ->where('status', 'admitted')
+            ->where(function ($query) use ($studentId) {
+                $query->where('student_id', $studentId)
+                    ->orWhereHas('user', fn ($userQuery) => $userQuery->where('student_id', $studentId));
+            })
+            ->latest('updated_at')
+            ->latest('id')
+            ->first();
     }
 
     protected function reallocationEligibleStatuses(): array

@@ -51,6 +51,9 @@ class AccommodationApplication extends Model
         'payment_reference',
         'payment_amount',
         'payment_status',
+        'payment_receipt_number',
+        'payment_confirmed_by_user_id',
+        'payment_confirmed_at',
         'paid_at',
         'checkout_date',
         'checkout_reason',
@@ -75,6 +78,7 @@ class AccommodationApplication extends Model
         'has_asthma' => 'boolean',
         'on_chronic_treatment' => 'boolean',
         'payment_amount' => 'decimal:2',
+        'payment_confirmed_at' => 'datetime',
         'paid_at' => 'datetime',
         'checkout_date' => 'date',
         'checkout_requested_at' => 'datetime',
@@ -96,6 +100,11 @@ class AccommodationApplication extends Model
     public function admissionProcessedBy()
     {
         return $this->belongsTo(User::class, 'admission_processed_by_user_id');
+    }
+
+    public function paymentConfirmedBy()
+    {
+        return $this->belongsTo(User::class, 'payment_confirmed_by_user_id');
     }
 
     public function requestedRoom()
