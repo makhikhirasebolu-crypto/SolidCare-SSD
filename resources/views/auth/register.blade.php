@@ -129,6 +129,17 @@
 
         .error-box p { margin: 5px 0; }
 
+        .account-note {
+            display: none;
+            background: #e0f2fe;
+            color: #075985;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
         /* Footer */
         footer {
             text-align: center;
@@ -149,9 +160,23 @@
 
     <script>
         function toggleFields() {
+            const email = document.getElementById('email');
+            const studentFields = document.getElementById('student_fields');
             const studentType = document.getElementById('student_type');
             const studentIdField = document.getElementById('student_id_field');
             const idNumberField = document.getElementById('id_number_field');
+            const adminNotice = document.getElementById('admin_notice');
+            const isAdminEmail = /^[a-z]+\.[a-z]+@limkokwing\.ac\.ls$/i.test((email.value || '').trim());
+
+            studentFields.style.display = isAdminEmail ? 'none' : 'block';
+            adminNotice.style.display = isAdminEmail ? 'block' : 'none';
+            studentType.required = !isAdminEmail;
+
+            if (isAdminEmail) {
+                studentIdField.style.display = 'none';
+                idNumberField.style.display = 'none';
+                return;
+            }
 
             studentIdField.style.display = (studentType.value === 'continuing') ? 'block' : 'none';
             idNumberField.style.display = (studentType.value === 'new') ? 'block' : 'none';
@@ -172,6 +197,7 @@
         }
 
         window.onload = function() {
+            document.getElementById('email').addEventListener('input', toggleFields);
             document.getElementById('student_type').addEventListener('change', toggleFields);
             toggleFields();
             toggleDisabilityDetails();
@@ -200,7 +226,7 @@
         <input type="text" name="name" placeholder="Full Name" value="{{ old('name') }}" required>
 
         <label for="email">Email</label>
-        <input type="email" name="email" placeholder="Email" value="{{ old('email') }}" required>
+        <input type="email" id="email" name="email" placeholder="Email" value="{{ old('email') }}" required>
 
         <label for="password">Password</label>
         <input type="password" name="password" placeholder="Password" required>
@@ -208,21 +234,25 @@
         <label for="password_confirmation">Confirm Password</label>
         <input type="password" name="password_confirmation" placeholder="Confirm Password" required>
 
-        <label for="student_type">Select Type</label>
-        <select name="student_type" id="student_type" onchange="toggleFields()" required>
-            <option value="">Select Type</option>
-            <option value="continuing" {{ old('student_type')=='continuing'?'selected':'' }}>Continuing Student</option>
-            <option value="new" {{ old('student_type')=='new'?'selected':'' }}>New Student</option>
-        </select>
+        <div id="admin_notice" class="account-note">This email will be registered as an admin account.</div>
 
-        <div id="student_id_field" style="display:none;">
-            <label>Student ID (if continuing)</label>
-            <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}">
-        </div>
+        <div id="student_fields">
+            <label for="student_type">Select Type</label>
+            <select name="student_type" id="student_type" onchange="toggleFields()" required>
+                <option value="">Select Type</option>
+                <option value="continuing" {{ old('student_type')=='continuing'?'selected':'' }}>Continuing Student</option>
+                <option value="new" {{ old('student_type')=='new'?'selected':'' }}>New Student</option>
+            </select>
 
-        <div id="id_number_field" style="display:none;">
-            <label>National ID (if new)</label>
-            <input type="text" name="id_number" placeholder="Identity Number" value="{{ old('id_number') }}">
+            <div id="student_id_field" style="display:none;">
+                <label>Student ID (if continuing)</label>
+                <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}">
+            </div>
+
+            <div id="id_number_field" style="display:none;">
+                <label>National ID (if new)</label>
+                <input type="text" name="id_number" placeholder="Identity Number" value="{{ old('id_number') }}">
+            </div>
         </div>
 
         <label>Do you have a disability?</label>

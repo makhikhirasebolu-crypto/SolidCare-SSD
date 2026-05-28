@@ -260,6 +260,44 @@ class ClinicReportTest extends TestCase
         );
     }
 
+    public function test_weekly_clinic_report_filters_receipts_to_selected_week(): void
+    {
+        $executive = $this->createExecutiveUser();
+        [$paracetamol] = $this->createClinicItems();
+        $selectedWeek = \Carbon\Carbon::parse('2026-05-05')->weekOfYear;
+
+        ClinicStockReceipt::create([
+            'clinic_stock_item_id' => $paracetamol->id,
+            'user_id' => $executive->id,
+            'quantity_received' => 40,
+            'received_date' => '2026-05-05',
+        ]);
+
+        ClinicStockReceipt::create([
+            'clinic_stock_item_id' => $paracetamol->id,
+            'user_id' => $executive->id,
+            'quantity_received' => 90,
+            'received_date' => '2026-05-20',
+        ]);
+
+        $response = $this->actingAs($executive)->get(route('clinic', [
+            'report_generated' => 1,
+            'report_type' => 'week',
+            'report_year' => 2026,
+            'report_week' => $selectedWeek,
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('Weekly Report')
+            ->assertSee('Week ' . $selectedWeek);
+
+        $this->assertMatchesRegularExpression(
+            '/Total Clinic Stock Received<\/small>\s*<span class="report-kpi-value">40<\/span>/',
+            $response->getContent()
+        );
+    }
+
     public function test_clinic_report_results_are_hidden_until_generate_is_clicked(): void
     {
         $executive = $this->createExecutiveUser();

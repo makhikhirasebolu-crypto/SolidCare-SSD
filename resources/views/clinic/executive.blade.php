@@ -948,9 +948,9 @@
                 ->take(4)
                 ->mapWithKeys(fn ($disease) => [$disease['label'] => $disease['case_count']]);
             $diseaseChart = $buildDonutChart($topDiseaseMix);
-            $activityBucketFormat = $reportType === 'month' ? 'Y-m-d' : 'Y-m';
-            $activityLabelFormat = $reportType === 'month' ? 'd M' : 'M y';
-            $activityFullLabelFormat = $reportType === 'month' ? 'M j, Y' : 'F Y';
+            $activityBucketFormat = in_array($reportType, ['month', 'week'], true) ? 'Y-m-d' : 'Y-m';
+            $activityLabelFormat = in_array($reportType, ['month', 'week'], true) ? 'd M' : 'M y';
+            $activityFullLabelFormat = in_array($reportType, ['month', 'week'], true) ? 'M j, Y' : 'F Y';
             $activitySource = collect();
 
             foreach ($stockReceipts as $receipt) {
@@ -1369,7 +1369,7 @@
                                                 Done
                                             </a>
                                             <a
-                                                href="{{ route('clinic.report.download', ['report_type' => $reportType, 'report_semester' => $reportSemester, 'report_month' => $reportMonth, 'report_year' => $reportYear]) }}"
+                                                href="{{ route('clinic.report.download', ['report_type' => $reportType, 'report_semester' => $reportSemester, 'report_month' => $reportMonth, 'report_start_date' => $reportStartDate->toDateString(), 'report_end_date' => $reportEndDate->toDateString(), 'report_year' => $reportYear]) }}"
                                                 class="btn btn-outline-primary btn-custom"
                                             >
                                                 Download CSV
@@ -1403,6 +1403,7 @@
                                                 <button type="button" class="report-type-menu-button {{ $reportType === 'general' ? 'is-active' : '' }}" data-report-type="general">General Report</button>
                                                 <button type="button" class="report-type-menu-button {{ $reportType === 'semester' ? 'is-active' : '' }}" data-report-type="semester">Semester Report</button>
                                                 <button type="button" class="report-type-menu-button {{ $reportType === 'month' ? 'is-active' : '' }}" data-report-type="month">Monthly Report</button>
+                                                <button type="button" class="report-type-menu-button {{ $reportType === 'week' ? 'is-active' : '' }}" data-report-type="week">Weekly Report</button>
                                                 <button type="button" class="report-type-menu-button {{ $reportType === 'year' ? 'is-active' : '' }}" data-report-type="year">Yearly Report</button>
                                             </div>
 
@@ -1418,6 +1419,14 @@
                                                             <option value="{{ $month }}" @selected($reportMonth === $month)>{{ \Carbon\Carbon::create()->month($month)->format('F') }}</option>
                                                         @endfor
                                                     </select>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Week Start Date</label>
+                                                    <input type="date" name="report_start_date" class="form-control" value="{{ $reportStartDate->toDateString() }}" required>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Week End Date</label>
+                                                    <input type="date" name="report_end_date" class="form-control" value="{{ $reportEndDate->toDateString() }}" required>
                                                 </div>
                                                 <div>
                                                     <label class="form-label">Semester</label>
@@ -1659,12 +1668,14 @@
                                                                         <td>{{ optional($item->expiry_date)->format('M j, Y') ?? 'Not recorded' }}</td>
                                                                         <td>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $item->status)) }}</td>
                                                                         <td>
-                                                                            <form method="POST" action="{{ route('clinic.stock.delete', $item) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete {{ $item->medicine_name }} from stock?');">
+                                                                            <form method="POST" action="{{ route('clinic.stock.delete', $item) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this stock item?');">
                                                                                 @csrf
                                                                                 <input type="hidden" name="clinic_panel" value="report">
                                                                                 <input type="hidden" name="report_type" value="{{ $reportType }}">
                                                                                 <input type="hidden" name="report_year" value="{{ $reportYear }}">
                                                                                 <input type="hidden" name="report_month" value="{{ $reportMonth }}">
+                                                                                <input type="hidden" name="report_start_date" value="{{ $reportStartDate->toDateString() }}">
+                                                                                <input type="hidden" name="report_end_date" value="{{ $reportEndDate->toDateString() }}">
                                                                                 <input type="hidden" name="report_semester" value="{{ $reportSemester }}">
                                                                                 <button type="submit" class="btn-delete" title="Delete">
                                                                                     <i class="fas fa-trash-alt"></i>

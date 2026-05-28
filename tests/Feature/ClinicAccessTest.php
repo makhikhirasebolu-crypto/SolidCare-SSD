@@ -116,4 +116,37 @@ class ClinicAccessTest extends TestCase
             'confirmed_at' => null,
         ]);
     }
+
+    public function test_deleted_clinic_stock_does_not_reappear_after_clinic_page_reload(): void
+    {
+        $executive = User::create([
+            'name' => 'Clinic Executive',
+            'email' => 'executive@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'executive',
+        ]);
+
+        $item = ClinicStockItem::create([
+            'medicine_name' => 'Panado',
+            'opening_stock' => 10,
+            'quantity_received' => 0,
+            'quantity_issued' => 0,
+            'status' => 'in_stock',
+        ]);
+
+        $deleteResponse = $this->actingAs($executive)->post(route('clinic.stock.delete', $item), [
+            'clinic_panel' => 'stock-details',
+        ]);
+
+        $deleteResponse->assertRedirect(route('clinic'));
+        $this->assertDatabaseMissing('clinic_stock_items', [
+            'id' => $item->id,
+        ]);
+        $this->assertDatabaseCount('clinic_stock_items', 0);
+
+        $this->actingAs($executive)->get(route('clinic'))->assertOk();
+
+        $this->assertDatabaseCount('clinic_stock_items', 0);
+    }
 }

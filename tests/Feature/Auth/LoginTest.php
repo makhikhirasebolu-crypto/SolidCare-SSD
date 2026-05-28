@@ -170,6 +170,63 @@ class LoginTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_limkokwing_name_surname_email_registers_as_admin_from_student_portal(): void
+    {
+        Notification::fake();
+
+        $response = $this->post('/register', [
+            'name' => 'Lineo Admin',
+            'email' => '  Lineo.Admin@Limkokwing.Ac.Ls  ',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect(route('home'));
+        $response->assertSessionHas('status', 'Admin account created successfully. Welcome to SolidCare SSD.');
+
+        $this->assertDatabaseHas('admins', [
+            'name' => 'Lineo Admin',
+            'email' => 'lineo.admin@limkokwing.ac.ls',
+        ]);
+        $this->assertDatabaseMissing('users', [
+            'email' => 'lineo.admin@limkokwing.ac.ls',
+        ]);
+        $this->assertDatabaseCount('students', 0);
+        $this->assertAuthenticated('admin');
+        $this->assertGuest('web');
+        Notification::assertNothingSent();
+    }
+
+    public function test_another_admin_can_register_from_student_portal_when_admins_already_exist(): void
+    {
+        Admin::create([
+            'name' => 'First Admin',
+            'email' => 'first.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+        Admin::create([
+            'name' => 'Second Admin',
+            'email' => 'second.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Third Admin',
+            'email' => 'third.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect(route('home'));
+
+        $this->assertDatabaseCount('admins', 3);
+        $this->assertDatabaseHas('admins', [
+            'name' => 'Third Admin',
+            'email' => 'third.admin@limkokwing.ac.ls',
+        ]);
+        $this->assertAuthenticated('admin');
+    }
+
     public function test_admin_can_create_a_staff_user_without_email_verification_flow(): void
     {
         Notification::fake();

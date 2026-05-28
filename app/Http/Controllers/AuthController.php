@@ -176,6 +176,10 @@ class AuthController extends Controller
             'id_number' => $this->normalizeNationalId($request->input('id_number')),
         ]);
 
+        if ($this->isAdminRegistrationEmail($request->input('email'))) {
+            return $this->registerAdminFromStudentPortal($request);
+        }
+
         $rules = [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -237,6 +241,42 @@ class AuthController extends Controller
         return redirect()
             ->route('home')
             ->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
+    }
+
+    protected function registerAdminFromStudentPortal(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (! $this->isAdminRegistrationEmail($value)) {
+                        $fail('Admin email must use the name.surname@limkokwing.ac.ls format.');
+                    }
+
+                    if ($this->emailAlreadyRegistered($value)) {
+                        $fail('This email address is already registered.');
+                    }
+
+                },
+            ],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $admin = Admin::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+        ]);
+
+        Auth::guard('admin')->login($admin);
+        $request->session()->regenerate();
+
+        return redirect()
+            ->route('home')
+            ->with('status', 'Admin account created successfully. Welcome to SolidCare SSD.');
     }
 
     public function showCreateUser()
@@ -2518,6 +2558,9 @@ class AuthController extends Controller
             'reportType' => $reportType,
             'reportYear' => $reportYear,
             'reportMonth' => $reportMonth,
+            'reportWeek' => $reportWeek,
+            'reportStartDate' => $reportStartDate,
+            'reportEndDate' => $reportEndDate,
             'reportSemester' => $reportSemester,
             'startDate' => $startDate,
             'endDate' => $endDate,
@@ -2660,6 +2703,9 @@ class AuthController extends Controller
             'reportType' => $reportType,
             'reportYear' => $reportYear,
             'reportMonth' => $reportMonth,
+            'reportWeek' => $reportWeek,
+            'reportStartDate' => $reportStartDate,
+            'reportEndDate' => $reportEndDate,
             'reportSemester' => $reportSemester,
             'startDate' => $startDate,
             'endDate' => $endDate,
@@ -2970,7 +3016,7 @@ class AuthController extends Controller
 
     protected function canAccessAccommodation(User $user): bool
     {
-        return $user->role === 'student'
+        return ($user->role === 'student' && $user->student_type === 'new')
             || in_array($user->role, ['executive', 'warden', 'ssd_assistant_2'], true);
     }
 
@@ -3465,13 +3511,15 @@ class AuthController extends Controller
 
     protected function renderClinicPage(User $user, Request $request)
     {
-        $this->ensureDefaultClinicStockExists();
         $reportGenerated = $request->boolean('report_generated') || $request->query->has('report_type');
 
         [
             'reportType' => $reportType,
             'reportYear' => $reportYear,
             'reportMonth' => $reportMonth,
+            'reportWeek' => $reportWeek,
+            'reportStartDate' => $reportStartDate,
+            'reportEndDate' => $reportEndDate,
             'reportSemester' => $reportSemester,
             'startDate' => $startDate,
             'endDate' => $endDate,
@@ -3522,6 +3570,9 @@ class AuthController extends Controller
             'reportType',
             'reportYear',
             'reportMonth',
+            'reportWeek',
+            'reportStartDate',
+            'reportEndDate',
             'reportSemester',
             'reportLabel'
         ));
@@ -3537,6 +3588,9 @@ class AuthController extends Controller
                 'report_type' => $request->input('report_type', 'general'),
                 'report_year' => $request->input('report_year', now()->year),
                 'report_month' => $request->input('report_month', now()->month),
+                'report_week' => $request->input('report_week', now()->weekOfYear),
+                'report_start_date' => $request->input('report_start_date', now()->startOfWeek()->toDateString()),
+                'report_end_date' => $request->input('report_end_date', now()->startOfWeek()->addDays(6)->toDateString()),
                 'report_semester' => $request->input('report_semester', 1),
             ])->with('clinic_panel', 'report');
         }
@@ -3717,6 +3771,15 @@ class AuthController extends Controller
                 ->exists();
     }
 
+    protected function isAdminRegistrationEmail(mixed $email): bool
+    {
+        if (! is_string($email)) {
+            return false;
+        }
+
+        return preg_match('/^[a-z]+\\.[a-z]+@limkokwing\\.ac\\.ls$/', $this->normalizeLoginIdentifier($email)) === 1;
+    }
+
     protected function canAccessClinic(User $user): bool
     {
         return in_array($user->role, ['executive', 'ssd_assistant_1', 'ssd_assistant_2', 'senior_nurse_officer'], true);
@@ -3863,13 +3926,29 @@ class AuthController extends Controller
 
     protected function reportFiltersFromRequest(Request $request): array
     {
-        $reportType = in_array($request->query('report_type'), ['general', 'semester', 'month', 'year'], true)
+        $reportType = in_array($request->query('report_type'), ['general', 'semester', 'month', 'week', 'year'], true)
             ? $request->query('report_type')
             : 'general';
         $reportYear = (int) ($request->query('report_year', now()->year));
         $reportYear = $reportYear >= 2000 && $reportYear <= 2100 ? $reportYear : (int) now()->year;
         $reportMonth = (int) ($request->query('report_month', now()->month));
         $reportMonth = $reportMonth >= 1 && $reportMonth <= 12 ? $reportMonth : (int) now()->month;
+        $reportWeek = (int) ($request->query('report_week', now()->weekOfYear));
+        $reportWeek = $reportWeek >= 1 && $reportWeek <= 53 ? $reportWeek : (int) now()->weekOfYear;
+        $defaultWeekStart = now()->startOfWeek();
+        $reportStartDate = $this->parseClinicReportDate(
+            $request->query('report_start_date'),
+            $defaultWeekStart
+        );
+        $reportEndDate = $this->parseClinicReportDate(
+            $request->query('report_end_date'),
+            $reportStartDate->copy()->addDays(6)
+        );
+
+        if ($reportStartDate->diffInDays($reportEndDate, false) !== 6) {
+            $reportEndDate = $reportStartDate->copy()->addDays(6);
+        }
+
         $reportSemester = (int) ($request->query('report_semester', 1));
         $reportSemester = in_array($reportSemester, [1, 2], true) ? $reportSemester : 1;
 
@@ -3877,6 +3956,9 @@ class AuthController extends Controller
             $reportType,
             $reportYear,
             $reportMonth,
+            $reportWeek,
+            $reportStartDate,
+            $reportEndDate,
             $reportSemester
         );
 
@@ -3884,6 +3966,9 @@ class AuthController extends Controller
             'reportType',
             'reportYear',
             'reportMonth',
+            'reportWeek',
+            'reportStartDate',
+            'reportEndDate',
             'reportSemester',
             'startDate',
             'endDate',
@@ -3895,6 +3980,9 @@ class AuthController extends Controller
         string $reportType,
         int $reportYear,
         int $reportMonth,
+        int $reportWeek,
+        Carbon $reportStartDate,
+        Carbon $reportEndDate,
         int $reportSemester
     ): array {
         if ($reportType === 'general') {
@@ -3918,12 +4006,32 @@ class AuthController extends Controller
             return [$startDate, $endDate, $startDate->format('F Y')];
         }
 
+        if ($reportType === 'week') {
+            $startDate = $reportStartDate->copy()->startOfDay();
+            $endDate = $reportEndDate->copy()->endOfDay();
+
+            return [$startDate, $endDate, 'Weekly Report (' . $startDate->format('M j') . ' - ' . $endDate->format('M j, Y') . ')'];
+        }
+
         $startMonth = $reportSemester === 1 ? 8 : 1;
         $endMonth = $reportSemester === 1 ? 12 : 5;
         $startDate = Carbon::create($reportYear, $startMonth, 1)->startOfDay();
         $endDate = Carbon::create($reportYear, $endMonth, 1)->endOfMonth()->endOfDay();
 
         return [$startDate, $endDate, 'Semester ' . $reportSemester . ' (' . $reportYear . ')'];
+    }
+
+    protected function parseClinicReportDate(mixed $date, Carbon $fallback): Carbon
+    {
+        if (! is_string($date) || trim($date) === '') {
+            return $fallback->copy()->startOfDay();
+        }
+
+        try {
+            return Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
+        } catch (\Throwable $exception) {
+            return $fallback->copy()->startOfDay();
+        }
     }
 
     protected function counsellingReportQuery(string $reportType, Carbon $startDate, Carbon $endDate)

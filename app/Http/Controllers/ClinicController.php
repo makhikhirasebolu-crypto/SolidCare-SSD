@@ -440,8 +440,6 @@ class ClinicController extends Controller
 
     protected function renderClinicPage(User $user, Request $request)
     {
-        $this->ensureDefaultClinicStockExists();
-
         [
             'reportType' => $reportType,
             'reportYear' => $reportYear,

@@ -713,7 +713,7 @@
             $canAccessClinic = $dashboardUser && in_array($dashboardUser->role, $clinicAccessRoles, true);
             $canManageCounselling = $dashboardUser && in_array($dashboardUser->role, ['psychologist', 'executive'], true);
             $canAccessCounselling = $dashboardUser && ($canManageCounselling || ($dashboardUser->role === 'student' && $dashboardUser->student_type === 'continuing'));
-            $canAccessAccommodation = $dashboardUser && ($dashboardUser->role === 'student' || in_array($dashboardUser->role, ['executive', 'warden', 'ssd_assistant_2'], true));
+            $canAccessAccommodation = $dashboardUser && (($dashboardUser->role === 'student' && $dashboardUser->student_type === 'new') || in_array($dashboardUser->role, ['executive', 'warden', 'ssd_assistant_2'], true));
             $userName = $dashboardUser ? ($dashboardUser->name ?? ($dashboardUser->email ?? 'Member')) : 'Guest';
         @endphp
 
@@ -846,7 +846,7 @@
                         @if ($canAccessAccommodation)
                             <a href="{{ route('accommodation') }}" class="btn-service">Manage Housing <i class="fas fa-arrow-right"></i></a>
                         @else
-                            <span class="btn-disabled"><i class="fas fa-lock"></i> Students / Accommodation staff only</span>
+                            <span class="btn-disabled"><i class="fas fa-lock"></i> Authorised students only</span>
                         @endif
                     </div>
                 </div>

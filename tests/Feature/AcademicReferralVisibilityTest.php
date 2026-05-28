@@ -120,6 +120,47 @@ class AcademicReferralVisibilityTest extends TestCase
         ]);
     }
 
+    public function test_ssd_assistant_2_can_add_referred_student(): void
+    {
+        $assistant = User::create([
+            'name' => 'SSD Assistant Two',
+            'email' => 'assistant.two.referrals@example.com',
+            'password' => 'password123',
+            'role' => 'ssd_assistant_2',
+        ]);
+
+        $this->actingAs($assistant)
+            ->get(route('academic.referrals'))
+            ->assertOk()
+            ->assertSee('Official Referral Sheet')
+            ->assertSee('Submit Referral Sheet');
+
+        $response = $this->actingAs($assistant)
+            ->from(route('academic.referrals'))
+            ->post(route('academic.referrals.store'), [
+                'student_first_name' => 'Referred',
+                'student_surname' => 'Student',
+                'student_identity_number' => 'referred-student-001',
+                'year_leader_name' => 'Year Leader One',
+                'priority' => 'Normal',
+                'reasons_for_referral' => 'Referred by year leader for SSD follow-up.',
+                'problem_identified_when' => 'This week',
+                'action_taken' => 'Year leader sent the student to SSD.',
+                'referral_date' => now()->toDateString(),
+            ]);
+
+        $response
+            ->assertRedirect(route('academic.referrals'))
+            ->assertSessionHas('success', 'Student referral submitted successfully!');
+
+        $this->assertDatabaseHas('student_referrals', [
+            'student_name' => 'Referred Student',
+            'student_id' => 'referred-student-001',
+            'priority' => 'Normal',
+            'referred_by' => $assistant->id,
+        ]);
+    }
+
     private function createYearLeaders(): array
     {
         return [
