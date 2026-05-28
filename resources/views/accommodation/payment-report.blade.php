@@ -259,75 +259,118 @@
                 </article>
             </div>
 
+            <section class="panel section mb-4">
+                <div class="section-header">
+                    <div>
+                        <h2>Confirmed Payment Report</h2>
+                    </div>
+                </div>
+                @if ($confirmedPaymentReports->isEmpty())
+                    <p class="mb-0 subtle">No payment receipts have been confirmed yet.</p>
+                @else
+                    <div class="table-wrap">
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Student Name</th>
+                                    <th>Receipt No.</th>
+                                    <th>Room</th>
+                                    <th>Month</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Confirmed By</th>
+                                    <th>Confirmed At</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($confirmedPaymentReports as $payment)
+                                    <tr>
+                                        <td class="cell-person">
+                                            <strong>{{ $payment->application->full_name }}</strong><br>
+                                            <span class="subtle">{{ $payment->application->email ?: optional($payment->application->user)->email ?: 'No email recorded' }}</span>
+                                        </td>
+                                        <td>{{ $payment->receipt_number }}</td>
+                                        <td>
+                                            @if ($payment->application->room)
+                                                {{ $payment->application->room->block_name }}-{{ str_pad((string) $payment->application->room->room_number, 2, '0', STR_PAD_LEFT) }}
+                                            @else
+                                                Not assigned
+                                            @endif
+                                        </td>
+                                        <td>{{ optional($payment->payment_month)->format('F Y') ?: 'Not recorded' }}</td>
+                                        <td>M {{ number_format((float) $payment->amount, 2) }}</td>
+                                        <td>{{ $monthlyRentPaymentMethodLabel ?? 'Standard Lesotho Bank' }}</td>
+                                        <td>{{ $payment->status ? \Illuminate\Support\Str::headline($payment->status) : 'Not recorded' }}</td>
+                                        <td>
+                                            @if ($payment->confirmedBy)
+                                                {{ $payment->confirmedBy->name ?: $payment->confirmedBy->email }}<br>
+                                                <span class="subtle">{{ \Illuminate\Support\Str::headline($payment->confirmedBy->role) }}</span>
+                                            @else
+                                                Not recorded
+                                            @endif
+                                        </td>
+                                        <td>{{ optional($payment->confirmed_at)->format('F j, Y g:i A') ?: 'Not recorded' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
+
             <section class="panel section">
                 <div class="section-header">
                     <div>
-                        <h2>Payment Confirmation</h2>
-                        <p>Enter the official receipt number against the matching admitted student.</p>
+                        <h2>Unpaid Rent Report</h2>
                     </div>
                 </div>
-                <div class="table-wrap">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Student</th>
-                                <th>Student ID</th>
-                                <th>Room</th>
-                                <th>Amount</th>
-                                <th>Receipt</th>
-                                <th>Status</th>
-                                <th>Confirmed By</th>
-                                <th>Confirm Payment</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($applications as $application)
+                @if ($unpaidRentReports->isEmpty())
+                    <p class="mb-0 subtle">No students are currently waiting for payment confirmation.</p>
+                @else
+                    <div class="table-wrap">
+                        <table class="report-table">
+                            <thead>
                                 <tr>
-                                    <td class="cell-person">
-                                        <strong>{{ $application->full_name }}</strong><br>
-                                        <span class="subtle">{{ $application->email }}</span>
-                                    </td>
-                                    <td>{{ $application->student_id ?: optional($application->user)->student_id ?: 'Not recorded' }}</td>
-                                    <td>{{ optional($application->room)->block_name }}-{{ str_pad((string) optional($application->room)->room_number, 2, '0', STR_PAD_LEFT) }}</td>
-                                    <td>{{ $application->payment_amount !== null ? 'M ' . number_format((float) $application->payment_amount, 2) : 'Not recorded' }}</td>
-                                    <td>{{ $application->payment_receipt_number ?: 'Not captured' }}</td>
-                                    <td>
-                                        <span class="badge-soft {{ filled($application->payment_receipt_number) ? 'badge-confirmed' : 'badge-pending' }}">
-                                            {{ filled($application->payment_receipt_number) ? 'Confirmed' : 'Pending' }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        @if ($application->paymentConfirmedBy)
-                                            {{ $application->paymentConfirmedBy->name ?: $application->paymentConfirmedBy->email }}<br>
-                                            <span class="subtle">{{ optional($application->payment_confirmed_at)->format('M j, Y g:i A') }}</span>
-                                        @else
-                                            Not recorded
-                                        @endif
-                                    </td>
-                                    <td>
-                                        <form method="POST" action="{{ route('accommodation.payment-report.confirm', $application) }}" class="receipt-form">
-                                            @csrf
-                                            <input
-                                                type="text"
-                                                name="payment_receipt_number"
-                                                class="form-control"
-                                                maxlength="100"
-                                                value="{{ old('payment_receipt_number', $application->payment_receipt_number) }}"
-                                                placeholder="Receipt number"
-                                                required
-                                            >
-                                            <button type="submit" class="btn btn-primary btn-custom">Confirm</button>
-                                        </form>
-                                    </td>
+                                    <th>Student Name</th>
+                                    <th>Receipt No.</th>
+                                    <th>Room</th>
+                                    <th>Month</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Confirmed By</th>
+                                    <th>Confirmed At</th>
                                 </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="8">No admitted accommodation students are currently available for payment confirmation.</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                @foreach ($unpaidRentReports as $report)
+                                    @php($application = $report['application'])
+                                    <tr>
+                                        <td class="cell-person">
+                                            <strong>{{ $application->full_name }}</strong><br>
+                                            <span class="subtle">{{ $application->email ?: optional($application->user)->email ?: 'No email recorded' }}</span>
+                                        </td>
+                                        <td>Not captured</td>
+                                        <td>
+                                            @if ($application->room)
+                                                {{ $application->room->block_name }}-{{ str_pad((string) $application->room->room_number, 2, '0', STR_PAD_LEFT) }}
+                                            @else
+                                                Not assigned
+                                            @endif
+                                        </td>
+                                        <td>{{ $report['months_label'] }}</td>
+                                        <td>M {{ number_format((float) $report['amount_due'], 2) }}</td>
+                                        <td>{{ $monthlyRentPaymentMethodLabel ?? 'Standard Lesotho Bank' }}</td>
+                                        <td>Waiting Confirmation</td>
+                                        <td>Not recorded</td>
+                                        <td>Not recorded</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             </section>
 
             <footer>&copy; 2026 SolidCare SSD. All rights reserved.</footer>

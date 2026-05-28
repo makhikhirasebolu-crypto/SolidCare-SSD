@@ -52,6 +52,7 @@ Route::post('/accommodation/checkout', [AuthController::class, 'storeCheckout'])
 Route::post('/accommodation/{application}/checkout/status', [AuthController::class, 'updateCheckoutStatus'])->name('student.accommodation.checkout.status');
 Route::post('/accommodation/reallocation', [AuthController::class, 'storeRoomReallocationRequest'])->name('student.accommodation.reallocation.store');
 Route::post('/accommodation/{application}/reallocate', [AuthController::class, 'reallocateRoom'])->name('student.accommodation.reallocate');
+Route::delete('/accommodation/{application}', [AuthController::class, 'deleteAccommodationApplication'])->name('student.accommodation.destroy');
 Route::post('/accommodation/{application}/reallocation/status', [AuthController::class, 'updateRoomReallocationStatus'])->name('student.accommodation.reallocation.status');
 Route::get('/home', [AuthController::class, 'dashboard'])->name('home');
 Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');

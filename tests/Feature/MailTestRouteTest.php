@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Mail\TestEmail;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
-
+ 
 class MailTestRouteTest extends TestCase
 {
     public function test_test_email_page_loads(): void

@@ -325,7 +325,7 @@
                 <div class="panel-card p-4 mb-5">
                     <form method="POST" action="{{ route('accommodation.payment-receipts.confirm') }}" class="row g-3 align-items-end">
                         @csrf
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-3">
                             <label for="payment-full-name" class="info-label">Full Name</label>
                             <input
                                 id="payment-full-name"
@@ -338,7 +338,7 @@
                                 required
                             >
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-3">
                             <label for="payment-receipt-number" class="info-label">Receipt Number</label>
                             <input
                                 id="payment-receipt-number"
@@ -351,141 +351,22 @@
                                 required
                             >
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-3">
+                            <label for="payment-month" class="info-label">Payment Month</label>
+                            <input
+                                id="payment-month"
+                                type="month"
+                                name="payment_month"
+                                class="form-control"
+                                value="{{ old('payment_month', ($paymentReportPayment?->payment_month?->copy()->addMonth() ?? now())->format('Y-m')) }}"
+                                required
+                            >
+                        </div>
+                        <div class="col-12 col-md-3">
                             <button type="submit" class="btn btn-primary btn-custom w-100">Confirm Payment</button>
                         </div>
                     </form>
 
-                    @if ($paymentReportApplication)
-                        <div class="mt-4">
-                            <h4 class="mb-3">Student Payment Report</h4>
-                            <div class="info-grid">
-                                <div class="info-item">
-                                    <span class="info-label">Student</span>
-                                    <span>{{ $paymentReportApplication->full_name }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Student ID</span>
-                                    <span>{{ $paymentReportApplication->student_id ?: optional($paymentReportApplication->user)->student_id ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Email</span>
-                                    <span>{{ $paymentReportApplication->email ?: optional($paymentReportApplication->user)->email ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Contact</span>
-                                    <span>{{ $paymentReportApplication->contact_number ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Faculty</span>
-                                    <span>{{ $paymentReportApplication->faculty ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Programme</span>
-                                    <span>{{ $paymentReportApplication->programme ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Allocated Room</span>
-                                    <span>
-                                        @if ($paymentReportApplication->room)
-                                            {{ $paymentReportApplication->room->block_name }}-{{ str_pad((string) $paymentReportApplication->room->room_number, 2, '0', STR_PAD_LEFT) }}
-                                        @else
-                                            Not assigned
-                                        @endif
-                                    </span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Check-In Date</span>
-                                    <span>{{ optional($paymentReportApplication->check_in_date)->format('F j, Y') ?: 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Payment Amount</span>
-                                    <span>{{ $paymentReportApplication->payment_amount !== null ? 'M ' . number_format((float) $paymentReportApplication->payment_amount, 2) : 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Payment Method</span>
-                                    <span>{{ $paymentReportApplication->payment_method ? strtoupper($paymentReportApplication->payment_method) : 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Receipt Number</span>
-                                    <span>{{ $paymentReportApplication->payment_receipt_number ?: 'Not captured' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Payment Status</span>
-                                    <span>{{ $paymentReportApplication->payment_status ? \Illuminate\Support\Str::headline($paymentReportApplication->payment_status) : 'Not recorded' }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Confirmed By</span>
-                                    <span>
-                                        @if ($paymentReportApplication->paymentConfirmedBy)
-                                            {{ $paymentReportApplication->paymentConfirmedBy->name ?: $paymentReportApplication->paymentConfirmedBy->email }}
-                                            <span class="text-secondary d-block">{{ \Illuminate\Support\Str::headline($paymentReportApplication->paymentConfirmedBy->role) }}</span>
-                                        @else
-                                            Not recorded
-                                        @endif
-                                    </span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Confirmed At</span>
-                                    <span>{{ optional($paymentReportApplication->payment_confirmed_at)->format('F j, Y g:i A') ?: 'Not recorded' }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    @endif
-
-                    <div class="mt-4">
-                        <h4 class="mb-3">Confirmed Payment Report</h4>
-                        @if ($confirmedPaymentReports->isEmpty())
-                            <p class="mb-0 text-secondary">No payment receipts have been confirmed yet.</p>
-                        @else
-                            <div class="table-responsive">
-                                <table class="table table-striped align-middle mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Student Name</th>
-                                            <th>Receipt No.</th>
-                                            <th>Room</th>
-                                            <th>Amount</th>
-                                            <th>Method</th>
-                                            <th>Status</th>
-                                            <th>Confirmed By</th>
-                                            <th>Confirmed At</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach ($confirmedPaymentReports as $paymentApplication)
-                                            <tr>
-                                                <td>
-                                                    {{ $paymentApplication->full_name }}
-                                                    <span class="text-secondary d-block">{{ $paymentApplication->email ?: optional($paymentApplication->user)->email ?: 'No email recorded' }}</span>
-                                                </td>
-                                                <td>{{ $paymentApplication->payment_receipt_number }}</td>
-                                                <td>
-                                                    @if ($paymentApplication->room)
-                                                        {{ $paymentApplication->room->block_name }}-{{ str_pad((string) $paymentApplication->room->room_number, 2, '0', STR_PAD_LEFT) }}
-                                                    @else
-                                                        Not assigned
-                                                    @endif
-                                                </td>
-                                                <td>{{ $paymentApplication->payment_amount !== null ? 'M ' . number_format((float) $paymentApplication->payment_amount, 2) : 'Not recorded' }}</td>
-                                                <td>{{ $paymentApplication->payment_method ? strtoupper($paymentApplication->payment_method) : 'Not recorded' }}</td>
-                                                <td>{{ $paymentApplication->payment_status ? \Illuminate\Support\Str::headline($paymentApplication->payment_status) : 'Not recorded' }}</td>
-                                                <td>
-                                                    @if ($paymentApplication->paymentConfirmedBy)
-                                                        {{ $paymentApplication->paymentConfirmedBy->name ?: $paymentApplication->paymentConfirmedBy->email }}
-                                                        <span class="text-secondary d-block">{{ \Illuminate\Support\Str::headline($paymentApplication->paymentConfirmedBy->role) }}</span>
-                                                    @else
-                                                        Not recorded
-                                                    @endif
-                                                </td>
-                                                <td>{{ optional($paymentApplication->payment_confirmed_at)->format('F j, Y g:i A') ?: 'Not recorded' }}</td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        @endif
-                    </div>
                 </div>
             @endif
 

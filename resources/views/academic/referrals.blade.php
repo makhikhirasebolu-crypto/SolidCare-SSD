@@ -970,7 +970,7 @@
     @php
         $canManageReferrals = $canManageReferrals ?? in_array($user->role, ['yearleader', 'executive', 'ssd_assistant_1', 'ssd_assistant_2'], true);
         $canUpdateStatus = $canUpdateStatus ?? in_array($user->role, ['executive', 'ssd_assistant_1', 'ssd_assistant_2'], true);
-        $canRefer = $canRefer ?? $user->role === 'yearleader';
+        $canRefer = $canRefer ?? in_array($user->role, ['yearleader', 'ssd_assistant_2'], true);
         $canSubmitAbsence = false;
         $canComment = $canComment ?? $canManageReferrals;
         $studentDirectory = $studentDirectory ?? collect();
@@ -1003,7 +1003,7 @@
         ];
         $urgentReferrals = $referrals->filter(fn ($r) => $r->priority === 'Urgent');
         $normalReferrals = $referrals->filter(fn ($r) => $r->priority === 'Normal');
-        $dashboardLabel = $canRefer ? 'Year Leader Referral Desk' : 'Student Support Follow-up Desk';
+        $dashboardLabel = $user->role === 'yearleader' ? 'Year Leader Referral Desk' : 'Student Support Follow-up Desk';
         $today = now()->format('Y-m-d');
         $limkokwingFaculties = config('limkokwing.faculties', []);
         $limkokwingYearsOfStudy = config('limkokwing.years_of_study', []);

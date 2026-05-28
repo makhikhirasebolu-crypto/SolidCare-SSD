@@ -81,6 +81,37 @@ class AccommodationReallocationTest extends TestCase
         ]);
     }
 
+    public function test_warden_can_delete_admitted_student_from_overview(): void
+    {
+        $warden = $this->createWarden();
+
+        $room = AccommodationRoom::create([
+            'block_name' => 'AF',
+            'room_number' => 1,
+            'capacity' => 4,
+        ]);
+        $application = $this->createApplicationForRoom('Delete Me Student', $room);
+
+        $this->actingAs($warden)
+            ->get(route('accommodation'))
+            ->assertOk()
+            ->assertSee('Delete Me Student')
+            ->assertDontSee('>Delete</button>', false);
+
+        $response = $this->actingAs($warden)->delete(route('student.accommodation.destroy', $application));
+
+        $response
+            ->assertRedirect(route('accommodation'))
+            ->assertSessionHas('success', 'Delete Me Student deleted from admitted students.');
+
+        $this->assertDatabaseMissing('accommodation_applications', [
+            'id' => $application->id,
+        ]);
+        $this->assertDatabaseMissing('users', [
+            'id' => $application->user_id,
+        ]);
+    }
+
     public function test_ssd_assistant_2_can_manage_reallocation_and_view_report_audit(): void
     {
         [$student, $application, $currentRoom, $requestedRoom] = $this->createAdmittedApplication();
@@ -159,7 +190,10 @@ class AccommodationReallocationTest extends TestCase
         ]);
 
         $this->createApplicationForRoom('Makaung Resident', $makaungRoom);
-        $this->createApplicationForRoom('Other Resident', $otherRoom);
+        $twoMonthDebtor = $this->createApplicationForRoom('Other Resident', $otherRoom);
+        $twoMonthDebtor->update([
+            'check_in_date' => now()->subMonthNoOverflow()->startOfMonth()->toDateString(),
+        ]);
         $pendingMakaung = $this->createApplicationForRoom('Pending Makaung', $makaungRoom);
         $pendingMakaung->update(['status' => 'pending']);
 
@@ -169,10 +203,17 @@ class AccommodationReallocationTest extends TestCase
             ->assertOk()
             ->assertSee('Accommodation Payment Report')
             ->assertSee('Admitted Students')
+            ->assertSee('Confirmed Payment Report')
+            ->assertSee('Unpaid Rent Report')
+            ->assertSeeInOrder(['Confirmed Payment Report', 'Unpaid Rent Report'])
+            ->assertDontSee('Payment Confirmation')
             ->assertSee('Makaung Resident')
             ->assertSee('Makaung-01')
             ->assertSee('Other Resident')
             ->assertSee('AG-01')
+            ->assertSee('Waiting Confirmation')
+            ->assertSee(now()->subMonthNoOverflow()->startOfMonth()->format('F Y') . ', ' . now()->startOfMonth()->format('F Y') . ' (2 months)')
+            ->assertSee('M 1,000.00')
             ->assertDontSee('Pending Makaung');
     }
 
@@ -194,6 +235,7 @@ class AccommodationReallocationTest extends TestCase
 
         $response = $this->actingAs($assistant)->post(route('accommodation.payment-report.confirm', $application), [
             'payment_receipt_number' => 'RCPT-2026-001',
+            'payment_month' => '2026-05',
         ]);
 
         $response
@@ -203,8 +245,21 @@ class AccommodationReallocationTest extends TestCase
         $this->assertDatabaseHas('accommodation_applications', [
             'id' => $application->id,
             'payment_receipt_number' => 'RCPT-2026-001',
+            'payment_amount' => 500,
+            'payment_month' => '2026-05-01 00:00:00',
+            'payment_method' => 'standard_lesotho_bank',
             'payment_status' => 'confirmed',
             'payment_confirmed_by_user_id' => $assistant->id,
+        ]);
+
+        $this->assertDatabaseHas('accommodation_payments', [
+            'accommodation_application_id' => $application->id,
+            'receipt_number' => 'RCPT-2026-001',
+            'payment_month' => '2026-05-01 00:00:00',
+            'amount' => 500,
+            'method' => 'standard_lesotho_bank',
+            'status' => 'confirmed',
+            'confirmed_by_user_id' => $assistant->id,
         ]);
     }
 
@@ -232,6 +287,7 @@ class AccommodationReallocationTest extends TestCase
         $response = $this->actingAs($assistant)->post(route('accommodation.payment-receipts.confirm'), [
             'full_name' => 'Overview Paid Student',
             'payment_receipt_number' => 'AF-REC-2026-77',
+            'payment_month' => '2026-05',
         ]);
 
         $response
@@ -241,8 +297,49 @@ class AccommodationReallocationTest extends TestCase
         $this->assertDatabaseHas('accommodation_applications', [
             'id' => $application->id,
             'payment_receipt_number' => 'AF-REC-2026-77',
+            'payment_amount' => 500,
+            'payment_month' => '2026-05-01 00:00:00',
+            'payment_method' => 'standard_lesotho_bank',
             'payment_status' => 'confirmed',
             'payment_confirmed_by_user_id' => $assistant->id,
+        ]);
+
+        $this->assertDatabaseHas('accommodation_payments', [
+            'accommodation_application_id' => $application->id,
+            'receipt_number' => 'AF-REC-2026-77',
+            'payment_month' => '2026-05-01 00:00:00',
+            'amount' => 500,
+            'method' => 'standard_lesotho_bank',
+            'status' => 'confirmed',
+            'confirmed_by_user_id' => $assistant->id,
+        ]);
+
+        $juneResponse = $this->actingAs($assistant)->post(route('accommodation.payment-receipts.confirm'), [
+            'full_name' => 'Overview Paid Student',
+            'payment_receipt_number' => 'AF-REC-2026-78',
+            'payment_month' => '2026-06',
+        ]);
+
+        $juneResponse
+            ->assertRedirect(route('accommodation', ['payment_full_name' => 'Overview Paid Student']))
+            ->assertSessionHas('success', 'Payment receipt confirmed for Overview Paid Student.');
+
+        $this->assertDatabaseHas('accommodation_payments', [
+            'accommodation_application_id' => $application->id,
+            'receipt_number' => 'AF-REC-2026-78',
+            'payment_month' => '2026-06-01 00:00:00',
+            'amount' => 500,
+            'method' => 'standard_lesotho_bank',
+            'status' => 'confirmed',
+            'confirmed_by_user_id' => $assistant->id,
+        ]);
+
+        $this->assertDatabaseCount('accommodation_payments', 2);
+
+        $this->assertDatabaseHas('accommodation_applications', [
+            'id' => $application->id,
+            'payment_receipt_number' => 'AF-REC-2026-78',
+            'payment_month' => '2026-06-01 00:00:00',
         ]);
 
         $viewResponse = $this->actingAs($assistant)->get(route('accommodation', [
@@ -252,13 +349,36 @@ class AccommodationReallocationTest extends TestCase
         $viewResponse
             ->assertOk()
             ->assertSee('Payment Receipt Confirmation')
-            ->assertSee('Student Payment Report')
-            ->assertSee('Confirmed Payment Report')
+            ->assertDontSee('Student Payment Report')
+            ->assertDontSee('Confirmed Payment Report')
             ->assertSee('Overview Paid Student')
-            ->assertSee('20261234')
+            ->assertDontSee('20261234')
+            ->assertDontSee('AF-REC-2026-77')
+            ->assertDontSee('AF-REC-2026-78')
+            ->assertDontSee('MPESA')
+            ->assertSee('AF-01');
+
+        $paymentReportResponse = $this->actingAs($assistant)->get(route('accommodation.payment-report'));
+
+        $paymentReportResponse
+            ->assertOk()
+            ->assertSee('Confirmed Payment Report')
+            ->assertSee('Student Name')
+            ->assertSee('Receipt No.')
+            ->assertSee('Room')
+            ->assertSee('Month')
+            ->assertSee('Amount')
+            ->assertSee('Method')
+            ->assertSee('Status')
+            ->assertSee('Confirmed By')
+            ->assertSee('Confirmed At')
+            ->assertSee('Overview Paid Student')
             ->assertSee('AF-REC-2026-77')
-            ->assertSee('M 105.00')
-            ->assertSee('MPESA')
+            ->assertSee('AF-REC-2026-78')
+            ->assertSee('May 2026')
+            ->assertSee('June 2026')
+            ->assertSee('M 500.00')
+            ->assertSee('Standard Lesotho Bank')
             ->assertSee('AF-01');
     }
 

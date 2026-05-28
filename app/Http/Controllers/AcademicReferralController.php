@@ -33,6 +33,11 @@ class AcademicReferralController extends Controller
         return in_array($role, $this->ssdStaffRoles(), true);
     }
 
+    private function canCreateReferralSheet(string $role): bool
+    {
+        return in_array($role, ['yearleader', 'ssd_assistant_2'], true);
+    }
+
     private function referralQueryForUser(User $user)
     {
         return StudentReferral::with(['referrer', 'student', 'comments.user', 'comments.replies.user']);
@@ -162,7 +167,7 @@ class AcademicReferralController extends Controller
             return redirect()->route('home')->with('error', 'Only Year Leaders, Executive, SSD Assistant 1, and SSD Assistant 2 can access Academic Supports.');
         }
 
-        $canRefer = $user->role === 'yearleader';
+        $canRefer = $this->canCreateReferralSheet($user->role);
         $canManageReferrals = $this->canManageSupportDesk($user->role);
         $canUpdateStatus = $this->canHandleReferredStudents($user->role);
         $canSubmitAbsence = false;
@@ -247,8 +252,8 @@ class AcademicReferralController extends Controller
     {
         $user = Auth::user();
         
-        if ($user->role !== 'yearleader') {
-            return back()->with('error', 'Only Year Leaders can create referrals. Executive and SSD assistants can follow up on existing student cases.');
+        if (! $this->canCreateReferralSheet($user->role)) {
+            return back()->with('error', 'Only Year Leaders and SSD Assistant 2 can create referrals.');
         }
         
         $validated = $request->validate([

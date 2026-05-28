@@ -50,6 +50,7 @@ class AccommodationApplication extends Model
         'payment_phone_number',
         'payment_reference',
         'payment_amount',
+        'payment_month',
         'payment_status',
         'payment_receipt_number',
         'payment_confirmed_by_user_id',
@@ -78,6 +79,7 @@ class AccommodationApplication extends Model
         'has_asthma' => 'boolean',
         'on_chronic_treatment' => 'boolean',
         'payment_amount' => 'decimal:2',
+        'payment_month' => 'date',
         'payment_confirmed_at' => 'datetime',
         'paid_at' => 'datetime',
         'checkout_date' => 'date',
@@ -105,6 +107,16 @@ class AccommodationApplication extends Model
     public function paymentConfirmedBy()
     {
         return $this->belongsTo(User::class, 'payment_confirmed_by_user_id');
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(AccommodationPayment::class);
+    }
+
+    public function latestPayment()
+    {
+        return $this->hasOne(AccommodationPayment::class)->latestOfMany('confirmed_at');
     }
 
     public function requestedRoom()

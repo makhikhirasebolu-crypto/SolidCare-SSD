@@ -10,6 +10,7 @@ use App\Mail\CheckoutRejected;
 use App\Mail\CheckoutRequestSubmitted;
 use App\Models\AccommodationApplication;
 use App\Models\AccommodationMessage;
+use App\Models\AccommodationPayment;
 use App\Models\AccommodationRoom;
 use App\Models\Admin;
 use App\Models\ClinicStockComment;
@@ -1010,9 +1011,12 @@ class AuthController extends Controller
                 $user,
                 $request->query('payment_full_name')
             );
+            $paymentReportPayment = $paymentReportApplication?->latestPayment;
             $confirmedPaymentReports = $this->confirmedAccommodationPaymentReports()->get();
+            $monthlyRentAmount = $this->accommodationMonthlyRentAmount();
+            $monthlyRentPaymentMethodLabel = $this->accommodationMonthlyRentPaymentMethodLabel();
 
-            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages', 'paymentReportApplication', 'confirmedPaymentReports'));
+            return view('accommodation.warden', compact('user', 'admittedApplications', 'rooms', 'availableRooms', 'reallocationRequests', 'accommodationMessages', 'paymentReportApplication', 'paymentReportPayment', 'confirmedPaymentReports', 'monthlyRentAmount', 'monthlyRentPaymentMethodLabel'));
         }
 
         $availableRooms = $application
@@ -1360,17 +1364,23 @@ class AuthController extends Controller
             ->latest('id')
             ->get();
 
-        $confirmedPaymentsCount = $applications
-            ->filter(fn (AccommodationApplication $application) => filled($application->payment_receipt_number))
-            ->count();
+        $confirmedPaymentsCount = $this->confirmedAccommodationPaymentReports()->count();
+        $confirmedPaymentReports = $this->confirmedAccommodationPaymentReports()->get();
 
-        $pendingPaymentsCount = $applications->count() - $confirmedPaymentsCount;
+        $unpaidRentReports = $this->unpaidAccommodationRentReports($applications);
+        $pendingPaymentsCount = $unpaidRentReports->count();
+        $monthlyRentAmount = $this->accommodationMonthlyRentAmount();
+        $monthlyRentPaymentMethodLabel = $this->accommodationMonthlyRentPaymentMethodLabel();
 
         return view('accommodation.payment-report', compact(
             'user',
             'applications',
+            'confirmedPaymentReports',
             'confirmedPaymentsCount',
-            'pendingPaymentsCount'
+            'pendingPaymentsCount',
+            'unpaidRentReports',
+            'monthlyRentAmount',
+            'monthlyRentPaymentMethodLabel'
         ));
     }
 
@@ -1404,17 +1414,27 @@ class AuthController extends Controller
                 'required',
                 'string',
                 'max:100',
+                Rule::unique('accommodation_payments', 'receipt_number'),
                 Rule::unique('accommodation_applications', 'payment_receipt_number')->ignore($application->id),
             ],
+            'payment_month' => ['required', 'date_format:Y-m'],
         ]);
 
-        $application->update([
-            'payment_receipt_number' => trim($data['payment_receipt_number']),
-            'payment_status' => 'confirmed',
-            'payment_confirmed_by_user_id' => $user->id,
-            'payment_confirmed_at' => now(),
-            'paid_at' => $application->paid_at ?? now(),
-        ]);
+        $paymentMonth = $this->formatAccommodationPaymentMonth($data['payment_month']);
+
+        if ($this->accommodationPaymentExistsForMonth($application, $paymentMonth)) {
+            return redirect()
+                ->route('accommodation.payment-report')
+                ->withInput($request->only('payment_receipt_number', 'payment_month'))
+                ->with('error', 'A payment for ' . Carbon::parse($paymentMonth)->format('F Y') . ' has already been recorded for ' . $application->full_name . '.');
+        }
+
+        $this->recordAccommodationMonthlyPayment(
+            $application,
+            trim($data['payment_receipt_number']),
+            $paymentMonth,
+            $user
+        );
 
         return redirect()
             ->route('accommodation.payment-report')
@@ -1442,8 +1462,10 @@ class AuthController extends Controller
                 'required',
                 'string',
                 'max:100',
+                Rule::unique('accommodation_payments', 'receipt_number'),
                 Rule::unique('accommodation_applications', 'payment_receipt_number'),
             ],
+            'payment_month' => ['required', 'date_format:Y-m'],
         ]);
 
         $fullName = trim($data['full_name']);
@@ -1456,13 +1478,21 @@ class AuthController extends Controller
                 ->with('error', 'No admitted accommodation student was found for Full Name ' . $fullName . '.');
         }
 
-        $application->update([
-            'payment_receipt_number' => trim($data['payment_receipt_number']),
-            'payment_status' => 'confirmed',
-            'payment_confirmed_by_user_id' => $user->id,
-            'payment_confirmed_at' => now(),
-            'paid_at' => $application->paid_at ?? now(),
-        ]);
+        $paymentMonth = $this->formatAccommodationPaymentMonth($data['payment_month']);
+
+        if ($this->accommodationPaymentExistsForMonth($application, $paymentMonth)) {
+            return redirect()
+                ->route('accommodation')
+                ->withInput($request->only('full_name', 'payment_receipt_number', 'payment_month'))
+                ->with('error', 'A payment for ' . Carbon::parse($paymentMonth)->format('F Y') . ' has already been recorded for ' . $application->full_name . '.');
+        }
+
+        $this->recordAccommodationMonthlyPayment(
+            $application,
+            trim($data['payment_receipt_number']),
+            $paymentMonth,
+            $user
+        );
 
         return redirect()
             ->route('accommodation', ['payment_full_name' => $fullName])
@@ -2094,6 +2124,34 @@ class AuthController extends Controller
         ]);
 
         return redirect()->route('accommodation')->with('success', 'Student room reallocated successfully.');
+    }
+
+    public function deleteAccommodationApplication(AccommodationApplication $application)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        $user = Auth::guard('web')->user();
+
+        if (! $this->canManageAccommodationRooms($user)) {
+            return redirect()->route('accommodation');
+        }
+
+        if ($application->status !== 'admitted') {
+            return redirect()->route('accommodation')->with('error', 'Only admitted students can be deleted from this table.');
+        }
+
+        $studentName = $application->full_name;
+        $studentUser = $application->user;
+
+        if ($studentUser && $studentUser->role === 'student') {
+            $studentUser->delete();
+        } else {
+            $application->delete();
+        }
+
+        return redirect()->route('accommodation')->with('success', $studentName . ' deleted from admitted students.');
     }
 
     public function storeAccommodationMessage(Request $request)
@@ -2947,17 +3005,16 @@ class AuthController extends Controller
 
     protected function admittedAccommodationPaymentApplications()
     {
-        return AccommodationApplication::with(['user', 'room', 'paymentConfirmedBy'])
+        return AccommodationApplication::with(['user', 'room', 'paymentConfirmedBy', 'latestPayment.confirmedBy', 'payments'])
             ->where('status', 'admitted');
     }
 
     protected function confirmedAccommodationPaymentReports()
     {
-        return $this->admittedAccommodationPaymentApplications()
-            ->whereNotNull('payment_receipt_number')
-            ->where('payment_receipt_number', '!=', '')
-            ->latest('payment_confirmed_at')
-            ->latest('updated_at')
+        return AccommodationPayment::with(['application.user', 'application.room', 'confirmedBy'])
+            ->where('status', 'confirmed')
+            ->whereHas('application', fn ($query) => $query->where('status', 'admitted'))
+            ->latest('confirmed_at')
             ->latest('id');
     }
 
@@ -2978,7 +3035,7 @@ class AuthController extends Controller
             return null;
         }
 
-        return AccommodationApplication::with(['user', 'room', 'admissionProcessedBy', 'paymentConfirmedBy'])
+        return AccommodationApplication::with(['user', 'room', 'admissionProcessedBy', 'paymentConfirmedBy', 'latestPayment.confirmedBy'])
             ->where('status', 'admitted')
             ->where(function ($query) use ($fullName) {
                 $query->whereRaw('LOWER(TRIM(full_name)) = ?', [Str::lower($fullName)])
@@ -3269,6 +3326,141 @@ class AuthController extends Controller
     protected function accommodationApplicationFee(): float
     {
         return 105.00;
+    }
+
+    protected function accommodationMonthlyRentAmount(): float
+    {
+        return 500.00;
+    }
+
+    protected function accommodationRentSystemStartMonth(): Carbon
+    {
+        return Carbon::create(2025, 8, 1)->startOfMonth();
+    }
+
+    protected function unpaidAccommodationRentReports($applications)
+    {
+        $monthlyRentAmount = $this->accommodationMonthlyRentAmount();
+
+        return $applications
+            ->map(function (AccommodationApplication $application) use ($monthlyRentAmount) {
+                $unpaidMonths = $this->unpaidAccommodationRentMonths($application);
+
+                if ($unpaidMonths->isEmpty()) {
+                    return null;
+                }
+
+                return [
+                    'application' => $application,
+                    'months_count' => $unpaidMonths->count(),
+                    'months_label' => $this->formatAccommodationRentMonthsLabel($unpaidMonths),
+                    'amount_due' => $unpaidMonths->count() * $monthlyRentAmount,
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    protected function unpaidAccommodationRentMonths(AccommodationApplication $application)
+    {
+        $startMonth = $this->accommodationRentSystemStartMonth();
+
+        if ($application->check_in_date && $application->check_in_date->copy()->startOfMonth()->greaterThan($startMonth)) {
+            $startMonth = $application->check_in_date->copy()->startOfMonth();
+        }
+
+        $endMonth = now()->startOfMonth();
+
+        if ($startMonth->greaterThan($endMonth)) {
+            return collect();
+        }
+
+        $paidMonths = $application->payments
+            ->where('status', 'confirmed')
+            ->map(fn (AccommodationPayment $payment) => $payment->payment_month?->copy()->startOfMonth()->format('Y-m'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $months = collect();
+        $cursor = $startMonth->copy();
+
+        while ($cursor->lessThanOrEqualTo($endMonth)) {
+            if (! $paidMonths->contains($cursor->format('Y-m'))) {
+                $months->push($cursor->copy());
+            }
+
+            $cursor->addMonth();
+        }
+
+        return $months;
+    }
+
+    protected function formatAccommodationRentMonthsLabel($months): string
+    {
+        if ($months->count() === 1) {
+            return $months->first()->format('F Y');
+        }
+
+        return $months
+            ->map(fn (Carbon $month) => $month->format('F Y'))
+            ->join(', ') . ' (' . $months->count() . ' months)';
+    }
+
+    protected function accommodationMonthlyRentPaymentMethod(): string
+    {
+        return 'standard_lesotho_bank';
+    }
+
+    protected function accommodationMonthlyRentPaymentMethodLabel(): string
+    {
+        return 'Standard Lesotho Bank';
+    }
+
+    protected function accommodationPaymentExistsForMonth(AccommodationApplication $application, string $paymentMonth): bool
+    {
+        return AccommodationPayment::query()
+            ->where('accommodation_application_id', $application->id)
+            ->whereDate('payment_month', $paymentMonth)
+            ->exists();
+    }
+
+    protected function recordAccommodationMonthlyPayment(
+        AccommodationApplication $application,
+        string $receiptNumber,
+        string $paymentMonth,
+        User $confirmedBy
+    ): AccommodationPayment {
+        $payment = AccommodationPayment::create([
+            'accommodation_application_id' => $application->id,
+            'receipt_number' => $receiptNumber,
+            'payment_month' => $paymentMonth,
+            'amount' => $this->accommodationMonthlyRentAmount(),
+            'method' => $this->accommodationMonthlyRentPaymentMethod(),
+            'status' => 'confirmed',
+            'confirmed_by_user_id' => $confirmedBy->id,
+            'confirmed_at' => now(),
+        ]);
+
+        $application->update([
+            'payment_receipt_number' => $payment->receipt_number,
+            'payment_amount' => $payment->amount,
+            'payment_month' => $payment->payment_month,
+            'payment_method' => $payment->method,
+            'payment_status' => $payment->status,
+            'payment_confirmed_by_user_id' => $confirmedBy->id,
+            'payment_confirmed_at' => $payment->confirmed_at,
+            'paid_at' => $application->paid_at ?? now(),
+        ]);
+
+        return $payment;
+    }
+
+    protected function formatAccommodationPaymentMonth(string $paymentMonth): string
+    {
+        return Carbon::createFromFormat('Y-m', $paymentMonth)
+            ->startOfMonth()
+            ->toDateString();
     }
 
     protected function renderClinicPage(User $user, Request $request)
