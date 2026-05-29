@@ -374,6 +374,26 @@ class AuthController extends Controller
             ->with('success', $memberName . ' has been removed and can no longer access the system.');
     }
 
+    public function deleteSystemAdmin(Admin $admin)
+    {
+        if (! Auth::guard('admin')->check()) {
+            return redirect()->route('login');
+        }
+
+        if (Auth::guard('admin')->id() === $admin->id) {
+            return redirect()
+                ->route('dashboard', ['members_report' => 1])
+                ->with('error', 'You cannot delete the admin account you are currently using.');
+        }
+
+        $adminName = $admin->name;
+        $admin->delete();
+
+        return redirect()
+            ->route('dashboard', ['members_report' => 1])
+            ->with('success', $adminName . ' has been removed and can no longer access the system.');
+    }
+
     public function reissueTemporaryPassword(User $user)
     {
         if (! Auth::guard('admin')->check()) {

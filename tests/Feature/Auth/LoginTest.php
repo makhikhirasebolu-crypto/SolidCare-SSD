@@ -355,6 +355,52 @@ class LoginTest extends TestCase
             ->assertDontSee('Reissue visible password');
     }
 
+    public function test_admin_can_delete_another_admin_from_members_report(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+        $otherAdmin = Admin::create([
+            'name' => 'Second Admin',
+            'email' => 'second.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->delete(route('admin.admins.destroy', $otherAdmin));
+
+        $response->assertRedirect(route('dashboard', ['members_report' => 1]));
+        $response->assertSessionHas('success', 'Second Admin has been removed and can no longer access the system.');
+
+        $this->assertDatabaseMissing('admins', [
+            'email' => 'second.admin@limkokwing.ac.ls',
+        ]);
+        $this->assertDatabaseHas('admins', [
+            'email' => 'admin@limkokwing.ac.ls',
+        ]);
+    }
+
+    public function test_admin_cannot_delete_their_current_admin_account(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->delete(route('admin.admins.destroy', $admin));
+
+        $response->assertRedirect(route('dashboard', ['members_report' => 1]));
+        $response->assertSessionHas('error', 'You cannot delete the admin account you are currently using.');
+
+        $this->assertDatabaseHas('admins', [
+            'email' => 'admin@limkokwing.ac.ls',
+        ]);
+    }
+
     public function test_admin_can_create_yearleader_with_programme_and_numeric_year(): void
     {
         Notification::fake();
