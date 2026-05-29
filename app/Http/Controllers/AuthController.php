@@ -1690,9 +1690,7 @@ class AuthController extends Controller
                 ->with('error', $this->duplicateAccommodationApplicationMessage($existing, $user));
         }
 
-        $applicationFee = $this->accommodationApplicationFee();
-
-        return view('accommodation.apply', compact('user', 'applicationFee'));
+        return view('accommodation.apply', compact('user'));
     }
 
     public function checkoutAccommodation()
