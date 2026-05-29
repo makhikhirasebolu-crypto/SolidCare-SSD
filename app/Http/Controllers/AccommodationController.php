@@ -490,7 +490,9 @@ class AccommodationController extends Controller
             'semester' => ['required', 'string', 'max:100'],
             'check_in_date' => ['required', 'date'],
             'district' => ['required', 'string', 'max:255'],
-            'village' => ['required', 'string', 'max:255'],
+            'village' => ['nullable', 'string', 'max:255', 'required_unless:district,Other'],
+            'foreign_country' => ['nullable', 'string', 'max:255', 'required_if:district,Other'],
+            'foreign_physical_address' => ['nullable', 'string', 'max:1000', 'required_if:district,Other'],
             'next_of_kin_name' => ['required', 'string', 'max:255'],
             'next_of_kin_relationship' => ['required', 'string', 'max:100'],
             'next_of_kin_contact' => ['required', 'string', 'max:100'],
@@ -527,6 +529,10 @@ class AccommodationController extends Controller
             $data['treatment_frequency'] = null;
         }
 
+        $address = $data['district'] === 'Other'
+            ? collect([$data['foreign_country'] ?? null, $data['foreign_physical_address'] ?? null])->filter()->implode(', ')
+            : collect([$data['district'], $data['village'] ?? null])->filter()->implode(', ');
+
         $existing = $this->findExistingAccommodationApplication($user, $data['national_id']);
 
         if ($existing) {
@@ -551,7 +557,7 @@ class AccommodationController extends Controller
             'intake' => $data['intake'],
             'semester' => $data['semester'],
             'check_in_date' => $data['check_in_date'],
-            'address' => collect([$data['district'], $data['village']])->filter()->implode(', '),
+            'address' => $address,
             'status' => 'pending',
         ];
 

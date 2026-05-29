@@ -628,9 +628,19 @@ textarea:focus {
                                     </select>
                                 </div>
 
-                                <div class="field">
+                                <div class="field" data-lesotho-address-field{{ old('district') === 'Other' ? ' hidden' : '' }}>
                                     <label for="village">Village</label>
-                                    <input id="village" type="text" name="village" value="{{ old('village') }}" required>
+                                    <input id="village" type="text" name="village" value="{{ old('village') }}"{{ old('district') === 'Other' ? '' : ' required' }}>
+                                </div>
+
+                                <div class="field" data-foreign-address-field{{ old('district') === 'Other' ? '' : ' hidden' }}>
+                                    <label for="foreign_country">Country</label>
+                                    <input id="foreign_country" type="text" name="foreign_country" value="{{ old('foreign_country') }}"{{ old('district') === 'Other' ? ' required' : '' }}>
+                                </div>
+
+                                <div class="field full" data-foreign-address-field{{ old('district') === 'Other' ? '' : ' hidden' }}>
+                                    <label for="foreign_physical_address">Physical Address</label>
+                                    <textarea id="foreign_physical_address" name="foreign_physical_address" rows="3"{{ old('district') === 'Other' ? ' required' : '' }}>{{ old('foreign_physical_address') }}</textarea>
                                 </div>
                             </div>
                         </div>
@@ -827,6 +837,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const nationalityDropdown = document.getElementById('nationality');
     const otherNationalityWrapper = document.querySelector('[data-nationality-other-wrapper]');
     const otherNationalityInput = document.getElementById('nationality_other');
+    const districtDropdown = document.getElementById('district');
+    const villageInput = document.getElementById('village');
+    const lesothoAddressField = document.querySelector('[data-lesotho-address-field]');
+    const foreignAddressFields = Array.from(document.querySelectorAll('[data-foreign-address-field]'));
+    const foreignAddressInputs = [
+        document.getElementById('foreign_country'),
+        document.getElementById('foreign_physical_address'),
+    ].filter(Boolean);
 
     const normalizeValue = (value) => (value || '').toString().trim().toLowerCase();
 
@@ -920,6 +938,37 @@ document.addEventListener('DOMContentLoaded', function () {
     if (nationalityDropdown) {
         nationalityDropdown.addEventListener('change', syncNationalityOtherField);
         syncNationalityOtherField();
+    }
+
+    const syncAddressFields = () => {
+        if (!districtDropdown || !villageInput || !lesothoAddressField) {
+            return;
+        }
+
+        const isForeignAddress = districtDropdown.value === 'Other';
+        lesothoAddressField.hidden = isForeignAddress;
+        villageInput.required = !isForeignAddress;
+
+        if (isForeignAddress) {
+            villageInput.value = '';
+        }
+
+        foreignAddressFields.forEach((field) => {
+            field.hidden = !isForeignAddress;
+        });
+
+        foreignAddressInputs.forEach((input) => {
+            input.required = isForeignAddress;
+
+            if (!isForeignAddress) {
+                input.value = '';
+            }
+        });
+    };
+
+    if (districtDropdown) {
+        districtDropdown.addEventListener('change', syncAddressFields);
+        syncAddressFields();
     }
 
     const toggleConditionalField = (targetName, shouldShow) => {
