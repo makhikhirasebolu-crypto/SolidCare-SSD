@@ -620,7 +620,12 @@ textarea:focus {
 
                                 <div class="field">
                                     <label for="district">District</label>
-                                    <input id="district" type="text" name="district" value="{{ old('district') }}" required>
+                                    <select id="district" name="district" required>
+                                        <option value="">Select district</option>
+                                        @foreach (['Berea', 'Butha-Buthe', 'Leribe', 'Mafeteng', 'Maseru', "Mohale's Hoek", 'Mokhotlong', "Qacha's Nek", 'Quthing', 'Thaba-Tseka', 'Other'] as $districtOption)
+                                            <option value="{{ $districtOption }}"{{ old('district') === $districtOption ? ' selected' : '' }}>{{ $districtOption }}</option>
+                                        @endforeach
+                                    </select>
                                 </div>
 
                                 <div class="field">
