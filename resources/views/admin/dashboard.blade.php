@@ -594,8 +594,10 @@
                 'senior_nurse_officer' => 'Senior Nurse Officer',
                 'warden' => 'Warden',
                 'yearleader' => 'Year Leader',
+                'admin' => 'System Admin',
             ];
             $roleIcons = [
+                'admin' => 'fa-user-shield',
                 'executive' => 'fa-crown',
                 'psychologist' => 'fa-brain',
                 'senior_nurse_officer' => 'fa-user-md',
@@ -745,7 +747,7 @@
                                 <h2 class="directory-title"><i class="fas fa-users me-2"></i>Added Members</h2>
                                 <p class="directory-subtitle">
                                     <i class="fas fa-id-badge text-info"></i>
-                                    Staff members currently registered in <strong>SolidCare SSD</strong>
+                                    Staff members and admins currently registered in <strong>SolidCare SSD</strong>
                                     <span class="verified-chip"><i class="fas fa-check-circle"></i> verified roster</span>
                                 </p>
                             </div>
@@ -767,7 +769,7 @@
                         @endif
 
                         @if($members->isEmpty())
-                            <div class="alert alert-info mb-0">No staff members have been added yet.</div>
+                            <div class="alert alert-info mb-0">No members have been added yet.</div>
                         @else
                             @php
                                 $memberRoleCounts = $members->countBy('role');
@@ -838,19 +840,28 @@
                                                             </form>
                                                         @endif
                                                     @else
-                                                        <span class="temporary-password-muted">Changed by user</span>
-                                                        <span class="temporary-password-status">Temporary password no longer applies.</span>
+                                                        @if($member->is_system_admin)
+                                                            <span class="temporary-password-muted">Not applicable</span>
+                                                            <span class="temporary-password-status">System admin account.</span>
+                                                        @else
+                                                            <span class="temporary-password-muted">Changed by user</span>
+                                                            <span class="temporary-password-status">Temporary password no longer applies.</span>
+                                                        @endif
                                                     @endif
                                                 </td>
                                                 <td>
-                                                    <form method="POST" action="{{ route('admin.users.destroy', $member) }}" onsubmit="return confirm('Delete this member? This member will no longer have access to the system.');">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="delete-member-btn">
-                                                            <i class="fas fa-trash-alt"></i>
-                                                            Delete
-                                                        </button>
-                                                    </form>
+                                                    @if($member->is_system_admin)
+                                                        <span class="temporary-password-muted">Protected</span>
+                                                    @else
+                                                        <form method="POST" action="{{ route('admin.users.destroy', $member) }}" onsubmit="return confirm('Delete this member? This member will no longer have access to the system.');">
+                                                            @csrf
+                                                            @method('DELETE')
+                                                            <button type="submit" class="delete-member-btn">
+                                                                <i class="fas fa-trash-alt"></i>
+                                                                Delete
+                                                            </button>
+                                                        </form>
+                                                    @endif
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -871,7 +882,7 @@
 
                             <div class="directory-footer">
                                 <span><span class="pulse-dot"></span><strong>SolidCare SSD</strong> staff directory is active.</span>
-                                <span>{{ $members->count() }} specialized staff members currently listed.</span>
+                                <span>{{ $members->count() }} members currently listed.</span>
                             </div>
                         @endif
                     </div>

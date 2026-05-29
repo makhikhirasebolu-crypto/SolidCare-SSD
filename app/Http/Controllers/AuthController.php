@@ -252,6 +252,10 @@ class AuthController extends Controller
                 'email',
                 'max:255',
                 function (string $attribute, mixed $value, \Closure $fail) {
+                    if (Admin::count() >= 2) {
+                        $fail('The system already has the maximum number of admin accounts.');
+                    }
+
                     if (! $this->isAdminRegistrationEmail($value)) {
                         $fail('Admin email must use the name.surname@limkokwing.ac.ls format.');
                     }
@@ -520,12 +524,33 @@ class AuthController extends Controller
         if (Auth::guard('admin')->check()) {
             $showCreateUserForm = $request->boolean('create_user') || $request->session()->has('errors');
             $showMembersReport = $request->boolean('members_report');
-            $members = $showMembersReport
-                ? User::query()
+            $members = collect();
+
+            if ($showMembersReport) {
+                $staffMembers = User::query()
                     ->where('role', '!=', 'student')
                     ->latest()
                     ->get(['id', 'name', 'email', 'role', 'password_temporary', 'temporary_password_expires_at', 'temporary_password_plain', 'created_at'])
-                : collect();
+                    ->each(function (User $user) {
+                        $user->setAttribute('is_system_admin', false);
+                    });
+
+                $adminMembers = Admin::query()
+                    ->latest()
+                    ->get(['id', 'name', 'email', 'created_at'])
+                    ->each(function (Admin $admin) {
+                        $admin->setAttribute('role', 'admin');
+                        $admin->setAttribute('password_temporary', false);
+                        $admin->setAttribute('temporary_password_expires_at', null);
+                        $admin->setAttribute('temporary_password_plain', null);
+                        $admin->setAttribute('is_system_admin', true);
+                    });
+
+                $members = $staffMembers
+                    ->concat($adminMembers)
+                    ->sortByDesc('created_at')
+                    ->values();
+            }
 
             return view('admin.dashboard', compact('showCreateUserForm', 'showMembersReport', 'members'));
         }

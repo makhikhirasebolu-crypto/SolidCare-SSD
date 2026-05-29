@@ -197,7 +197,32 @@ class LoginTest extends TestCase
         Notification::assertNothingSent();
     }
 
-    public function test_another_admin_can_register_from_student_portal_when_admins_already_exist(): void
+    public function test_second_admin_can_register_from_student_portal_when_one_admin_exists(): void
+    {
+        Admin::create([
+            'name' => 'First Admin',
+            'email' => 'first.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Second Admin',
+            'email' => 'second.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect(route('home'));
+
+        $this->assertDatabaseCount('admins', 2);
+        $this->assertDatabaseHas('admins', [
+            'name' => 'Second Admin',
+            'email' => 'second.admin@limkokwing.ac.ls',
+        ]);
+        $this->assertAuthenticated('admin');
+    }
+
+    public function test_third_admin_cannot_register_from_student_portal(): void
     {
         Admin::create([
             'name' => 'First Admin',
@@ -217,14 +242,16 @@ class LoginTest extends TestCase
             'password_confirmation' => 'password123',
         ]);
 
-        $response->assertRedirect(route('home'));
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors([
+            'email' => 'The system already has the maximum number of admin accounts.',
+        ]);
 
-        $this->assertDatabaseCount('admins', 3);
-        $this->assertDatabaseHas('admins', [
-            'name' => 'Third Admin',
+        $this->assertDatabaseCount('admins', 2);
+        $this->assertDatabaseMissing('admins', [
             'email' => 'third.admin@limkokwing.ac.ls',
         ]);
-        $this->assertAuthenticated('admin');
+        $this->assertGuest('admin');
     }
 
     public function test_admin_can_create_a_staff_user_without_email_verification_flow(): void
@@ -280,6 +307,10 @@ class LoginTest extends TestCase
         $response->assertSee('Temporary Password');
         $response->assertSee('temporary123');
         $response->assertSee('Expires');
+        $response->assertSee('SSD Admin');
+        $response->assertSee('admin@limkokwing.ac.ls');
+        $response->assertSee('System Admin');
+        $response->assertSee('Protected');
     }
 
     public function test_admin_can_reissue_active_temporary_passwords_created_before_display_was_enabled(): void
