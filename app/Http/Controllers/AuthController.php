@@ -1804,7 +1804,6 @@ class AuthController extends Controller
 
         $data = $request->validate([
             'full_name' => ['required', 'string', 'max:255'],
-            'student_id' => ['required', 'string', 'max:100', 'regex:/^\d+$/'],
             'contact_number' => ['required', 'string', 'max:50'],
             'national_id' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
@@ -1832,8 +1831,6 @@ class AuthController extends Controller
             'chronic_illness_other' => ['nullable', 'string', 'max:1000'],
             'on_chronic_treatment' => ['required', 'boolean'],
             'treatment_frequency' => ['nullable', 'string', 'max:1000', 'required_if:on_chronic_treatment,1'],
-        ], [
-            'student_id.regex' => 'Student ID must contain numbers only.',
         ]);
 
         foreach ([
@@ -1869,7 +1866,7 @@ class AuthController extends Controller
         $applicationPayload = [
             'user_id' => $user->id,
             'full_name' => $data['full_name'],
-            'student_id' => $data['student_id'],
+            'student_id' => $user->student_id,
             'contact_number' => $data['contact_number'],
             'national_id' => $data['national_id'],
             'email' => $data['email'],

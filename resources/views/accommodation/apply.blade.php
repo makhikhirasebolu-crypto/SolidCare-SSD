@@ -526,11 +526,6 @@ textarea:focus {
                                 </div>
 
                                 <div class="field">
-                                    <label for="student_id">Student ID</label>
-                                    <input id="student_id" type="text" name="student_id" value="{{ old('student_id', $user->student_id ?? '') }}" placeholder="901015587" inputmode="numeric" pattern="[0-9]+" title="Student ID must contain numbers only" required>
-                                </div>
-
-                                <div class="field">
                                     <label for="contact_number">Contact No</label>
                                     <input id="contact_number" type="text" name="contact_number" value="{{ old('contact_number') }}" required>
                                 </div>
