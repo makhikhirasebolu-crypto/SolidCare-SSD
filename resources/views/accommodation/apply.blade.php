@@ -764,34 +764,6 @@ textarea:focus {
                         </div>
                     </section>
 
-                    <section class="form-section">
-                        <div class="section-card payment-card">
-                            <div class="section-header">
-                                <div class="section-label">04</div>
-                                <h2 class="section-title">Accommodation Payment</h2>
-                                <p class="section-copy">Your payment receipt is still handled through the system, but the form layout now sits inside the same hostel application flow.</p>
-                            </div>
-
-                            <div class="field-grid">
-                                <div class="field">
-                                    <label for="payment_method">Payment Method</label>
-                                    <select id="payment_method" name="payment_method" required>
-                                        <option value="">Select payment method</option>
-                                        <option value="mpesa"{{ old('payment_method') === 'mpesa' ? ' selected' : '' }}>M-Pesa</option>
-                                        <option value="ecocash"{{ old('payment_method') === 'ecocash' ? ' selected' : '' }}>EcoCash</option>
-                                    </select>
-                                </div>
-
-                                <div class="field">
-                                    <label for="payment_phone_number">Payment Phone Number</label>
-                                    <input id="payment_phone_number" type="text" name="payment_phone_number" value="{{ old('payment_phone_number', old('contact_number')) }}" required>
-                                </div>
-                            </div>
-
-                            <div class="fee-tag">Current application fee in system: M{{ number_format($applicationFee, 2) }}</div>
-                        </div>
-                    </section>
-
                     <div class="actions">
                         <div class="actions-copy">
                             Student accommodation allocation remains subject to SSD priority criteria and room availability. Submitting this form sends the application for accommodation review.

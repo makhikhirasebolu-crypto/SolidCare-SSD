@@ -506,8 +506,6 @@ class AccommodationController extends Controller
             'chronic_illness_other' => ['nullable', 'string', 'max:1000'],
             'on_chronic_treatment' => ['required', 'boolean'],
             'treatment_frequency' => ['nullable', 'string', 'max:1000', 'required_if:on_chronic_treatment,1'],
-            'payment_method' => ['required', 'in:mpesa,ecocash'],
-            'payment_phone_number' => ['required', 'string', 'max:50'],
         ], [
             'student_id.regex' => 'Student ID must contain numbers only.',
         ]);
@@ -541,10 +539,6 @@ class AccommodationController extends Controller
                 ->route('accommodation')
                 ->with('error', $this->duplicateAccommodationApplicationMessage($existing, $user));
         }
-
-        $applicationFee = $this->accommodationApplicationFee();
-
-        $paymentReference = 'ACC-' . now()->format('YmdHis') . '-' . strtoupper((string) $user->id);
 
         $applicationPayload = [
             'user_id' => $user->id,
@@ -591,33 +585,9 @@ class AccommodationController extends Controller
             }
         }
 
-        if (Schema::hasColumn('accommodation_applications', 'payment_method')) {
-            $applicationPayload['payment_method'] = $data['payment_method'];
-        }
-
-        if (Schema::hasColumn('accommodation_applications', 'payment_phone_number')) {
-            $applicationPayload['payment_phone_number'] = $data['payment_phone_number'];
-        }
-
-        if (Schema::hasColumn('accommodation_applications', 'payment_reference')) {
-            $applicationPayload['payment_reference'] = $paymentReference;
-        }
-
-        if (Schema::hasColumn('accommodation_applications', 'payment_amount')) {
-            $applicationPayload['payment_amount'] = $applicationFee;
-        }
-
-        if (Schema::hasColumn('accommodation_applications', 'payment_status')) {
-            $applicationPayload['payment_status'] = 'paid';
-        }
-
-        if (Schema::hasColumn('accommodation_applications', 'paid_at')) {
-            $applicationPayload['paid_at'] = now();
-        }
-
         AccommodationApplication::create($applicationPayload);
 
-        return redirect()->route('accommodation')->with('success', 'Accommodation application submitted successfully. Payment received via ' . strtoupper($data['payment_method']) . '.');
+        return redirect()->route('accommodation')->with('success', 'Accommodation application submitted successfully.');
     }
 
     public function checkout()
