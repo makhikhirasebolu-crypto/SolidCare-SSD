@@ -461,18 +461,15 @@ class AuthController extends Controller
             return redirect()->route('login');
         }
 
-        if ($user->role === 'student') {
-            return redirect()
-                ->route('dashboard', ['members_report' => 1])
-                ->with('error', 'Student accounts cannot be removed from the members report.');
-        }
-
         $memberName = $user->name;
+        $isStudent = $user->role === 'student';
         $user->delete();
 
         return redirect()
             ->route('dashboard', ['members_report' => 1])
-            ->with('success', $memberName . ' has been removed and can no longer access the system.');
+            ->with('success', $memberName . ($isStudent
+                ? ' has been deleted from the student system.'
+                : ' has been removed and can no longer access the system.'));
     }
 
     public function deleteSystemAdmin(Admin $admin)
@@ -672,12 +669,25 @@ class AuthController extends Controller
             $members = collect();
 
             if ($showMembersReport) {
-                $staffMembers = User::query()
-                    ->where('role', '!=', 'student')
+                $systemUsers = User::query()
                     ->latest()
-                    ->get(['id', 'name', 'email', 'role', 'password_temporary', 'temporary_password_expires_at', 'temporary_password_plain', 'created_at'])
+                    ->get([
+                        'id',
+                        'name',
+                        'email',
+                        'email_verified_at',
+                        'role',
+                        'student_type',
+                        'student_id',
+                        'id_number',
+                        'password_temporary',
+                        'temporary_password_expires_at',
+                        'temporary_password_plain',
+                        'created_at',
+                    ])
                     ->each(function (User $user) {
                         $user->setAttribute('is_system_admin', false);
+                        $user->setAttribute('is_student_account', $user->role === 'student');
                     });
 
                 $adminMembers = Admin::query()
@@ -689,9 +699,14 @@ class AuthController extends Controller
                         $admin->setAttribute('temporary_password_expires_at', null);
                         $admin->setAttribute('temporary_password_plain', null);
                         $admin->setAttribute('is_system_admin', true);
+                        $admin->setAttribute('is_student_account', false);
+                        $admin->setAttribute('email_verified_at', $admin->email_verified_at);
+                        $admin->setAttribute('student_type', null);
+                        $admin->setAttribute('student_id', null);
+                        $admin->setAttribute('id_number', null);
                     });
 
-                $members = $staffMembers
+                $members = $systemUsers
                     ->concat($adminMembers)
                     ->sortByDesc('created_at')
                     ->values();
