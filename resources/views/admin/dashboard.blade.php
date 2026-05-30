@@ -854,9 +854,8 @@
                                                         @if(auth('admin')->id() === $member->id)
                                                             <span class="temporary-password-muted">Protected</span>
                                                         @else
-                                                            <form method="POST" action="{{ route('admin.admins.destroy', $member) }}" onsubmit="return confirm('Delete this admin? This admin will no longer have access to the system.');">
+                                                            <form method="POST" action="{{ route('admin.admins.delete', $member) }}" onsubmit="return confirm('Delete this admin? This admin will no longer have access to the system.');">
                                                                 @csrf
-                                                                @method('DELETE')
                                                                 <button type="submit" class="delete-member-btn">
                                                                     <i class="fas fa-trash-alt"></i>
                                                                     Delete
@@ -864,9 +863,8 @@
                                                             </form>
                                                         @endif
                                                     @else
-                                                        <form method="POST" action="{{ route('admin.users.destroy', $member) }}" onsubmit="return confirm('Delete this member? This member will no longer have access to the system.');">
+                                                        <form method="POST" action="{{ route('admin.users.delete', $member) }}" onsubmit="return confirm('Delete this member? This member will no longer have access to the system.');">
                                                             @csrf
-                                                            @method('DELETE')
                                                             <button type="submit" class="delete-member-btn">
                                                                 <i class="fas fa-trash-alt"></i>
                                                                 Delete

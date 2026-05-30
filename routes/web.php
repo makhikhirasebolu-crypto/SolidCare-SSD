@@ -67,6 +67,8 @@ Route::middleware(['student.verified'])->group(function () {
     Route::get('/admin/users/create', [AuthController::class, 'showCreateUser'])->name('admin.users.create');
     Route::post('/admin/users/store', [AuthController::class, 'storeAdminUser'])->name('admin.users.store');
     Route::post('/admin/users/{user}/temporary-password', [AuthController::class, 'reissueTemporaryPassword'])->name('admin.users.temporary-password.reissue');
+    Route::post('/admin/admins/{admin}/delete', [AuthController::class, 'deleteSystemAdmin'])->name('admin.admins.delete');
+    Route::post('/admin/users/{user}/delete', [AuthController::class, 'deleteAdminUser'])->name('admin.users.delete');
     Route::delete('/admin/admins/{admin}', [AuthController::class, 'deleteSystemAdmin'])->name('admin.admins.destroy');
     Route::delete('/admin/users/{user}', [AuthController::class, 'deleteAdminUser'])->name('admin.users.destroy');
     Route::get('/password/temporary', [AuthController::class, 'showTemporaryPasswordForm'])->name('password.temporary');

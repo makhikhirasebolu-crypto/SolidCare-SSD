@@ -390,6 +390,56 @@ class LoginTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_delete_staff_member_from_members_report_button(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+        $member = User::create([
+            'name' => 'Changed Password Staff',
+            'email' => 'changed.staff@example.com',
+            'password' => 'password123',
+            'role' => 'warden',
+            'password_temporary' => false,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->post(route('admin.users.delete', $member));
+
+        $response->assertRedirect(route('dashboard', ['members_report' => 1]));
+        $response->assertSessionHas('success', 'Changed Password Staff has been removed and can no longer access the system.');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'changed.staff@example.com',
+        ]);
+    }
+
+    public function test_admin_can_delete_another_admin_from_members_report_button(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+        $otherAdmin = Admin::create([
+            'name' => 'Second Admin',
+            'email' => 'second.admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->post(route('admin.admins.delete', $otherAdmin));
+
+        $response->assertRedirect(route('dashboard', ['members_report' => 1]));
+        $response->assertSessionHas('success', 'Second Admin has been removed and can no longer access the system.');
+
+        $this->assertDatabaseMissing('admins', [
+            'email' => 'second.admin@limkokwing.ac.ls',
+        ]);
+    }
+
     public function test_admin_cannot_delete_their_current_admin_account(): void
     {
         $admin = Admin::create([
