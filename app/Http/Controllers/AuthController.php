@@ -24,7 +24,6 @@ use App\Models\StudentReferral;
 use App\Models\User;
 use App\Models\YearLeader;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -268,12 +267,34 @@ class AuthController extends Controller
         return view('auth.verify-email', ['user' => $user]);
     }
 
-    public function verifyEmail(EmailVerificationRequest $request)
+    public function verifyEmail(Request $request)
     {
-        /** @var User $user */
-        $user = $request->user();
+        $user = User::find($request->route('id'));
+        $hash = (string) $request->route('hash');
+
+        if (! $user || ! hash_equals($hash, sha1($user->getEmailForVerification()))) {
+            $user = $this->findStudentByVerificationHash($hash);
+        }
+
+        if (! $user) {
+            Log::warning('Email verification link could not be matched to a student.', [
+                'route_user_id' => $request->route('id'),
+                'route_hash' => $hash,
+            ]);
+
+            $target = Auth::guard('web')->check()
+                ? route('verification.notice')
+                : route('login');
+
+            return redirect($target)
+                ->with('error', 'This verification link is no longer valid. Please request a new verification email.');
+        }
 
         if ($user->hasVerifiedEmail()) {
+            Auth::guard('admin')->logout();
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+
             return redirect()->route('home')->with('status', 'Your email address is already verified.');
         }
 
@@ -281,7 +302,23 @@ class AuthController extends Controller
             event(new Verified($user));
         }
 
+        Auth::guard('admin')->logout();
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+
         return redirect()->route('home')->with('status', 'Email verified successfully. Welcome to SolidCare SSD.');
+    }
+
+    protected function findStudentByVerificationHash(string $hash): ?User
+    {
+        $matches = User::query()
+            ->where('role', 'student')
+            ->whereNull('email_verified_at')
+            ->whereNotNull('email')
+            ->get(['id', 'email', 'email_verified_at', 'role'])
+            ->filter(fn (User $user) => hash_equals($hash, sha1($user->getEmailForVerification())));
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     public function resendEmailVerification(Request $request)

@@ -8,6 +8,7 @@ use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class LoginTest extends TestCase
@@ -502,6 +503,93 @@ class LoginTest extends TestCase
 
         $accommodationResponse = $this->get(route('accommodation'));
         $accommodationResponse->assertRedirect(route('verification.notice'));
+    }
+
+    public function test_student_can_verify_email_even_if_another_student_session_is_active(): void
+    {
+        $activeUser = User::create([
+            'name' => 'Active Student',
+            'email' => 'active@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        $verifyingUser = User::create([
+            'name' => 'Verifying Student',
+            'email' => 'verifying@example.com',
+            'email_verified_at' => null,
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015688',
+            'disability' => 'no',
+        ]);
+
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(60),
+            [
+                'id' => $verifyingUser->id,
+                'hash' => sha1($verifyingUser->getEmailForVerification()),
+            ]
+        );
+
+        $response = $this->actingAs($activeUser)->get($verificationUrl);
+
+        $response
+            ->assertRedirect(route('home'))
+            ->assertSessionHas('status', 'Email verified successfully. Welcome to SolidCare SSD.');
+
+        $this->assertAuthenticatedAs($verifyingUser->fresh());
+        $this->assertNotNull($verifyingUser->fresh()->email_verified_at);
+    }
+
+    public function test_student_can_verify_email_when_link_id_is_stale_but_email_hash_matches(): void
+    {
+        $staleUser = User::create([
+            'name' => 'Stale Student',
+            'email' => 'stale@example.com',
+            'email_verified_at' => null,
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        $verifyingUser = User::create([
+            'name' => 'Verifying Student',
+            'email' => 'verifying@example.com',
+            'email_verified_at' => null,
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015688',
+            'disability' => 'no',
+        ]);
+
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(60),
+            [
+                'id' => $staleUser->id,
+                'hash' => sha1($verifyingUser->getEmailForVerification()),
+            ]
+        );
+
+        $response = $this->get($verificationUrl);
+
+        $response
+            ->assertRedirect(route('home'))
+            ->assertSessionHas('status', 'Email verified successfully. Welcome to SolidCare SSD.');
+
+        $this->assertAuthenticatedAs($verifyingUser->fresh());
+        $this->assertNotNull($verifyingUser->fresh()->email_verified_at);
+        $this->assertNull($staleUser->fresh()->email_verified_at);
     }
 
     public function test_new_student_registration_is_denied_when_national_id_already_exists(): void

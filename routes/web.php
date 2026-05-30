@@ -16,7 +16,7 @@ Route::post('/register', [AuthController::class, 'register'])->name('register.st
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::get('/email/verify', [AuthController::class, 'showEmailVerificationNotice'])->name('verification.notice');
 Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
-    ->middleware(['auth', 'signed'])
+    ->middleware(['signed'])
     ->name('verification.verify');
 Route::post('/email/verification-notification', [AuthController::class, 'resendEmailVerification'])
     ->middleware(['auth', 'throttle:6,1'])
