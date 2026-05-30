@@ -619,17 +619,12 @@ textarea:focus {
                                 </div>
 
                                 <div class="field">
-                                    <label for="district">District</label>
-                                    <select id="district" name="district" required>
-                                        <option value="">Select district</option>
-                                        @foreach (['Berea', 'Butha-Buthe', 'Leribe', 'Mafeteng', 'Maseru', "Mohale's Hoek", 'Mokhotlong', "Qacha's Nek", 'Quthing', 'Thaba-Tseka', 'Other'] as $districtOption)
-                                            <option value="{{ $districtOption }}"{{ old('district') === $districtOption ? ' selected' : '' }}>{{ $districtOption }}</option>
-                                        @endforeach
-                                    </select>
+                                    <label for="district">District and Village</label>
+                                    <input id="district" type="text" name="district" value="{{ old('district') }}" placeholder="e.g. Maseru, Roma" required>
                                 </div>
 
                                 <div class="field" data-lesotho-address-field{{ old('district') === 'Other' ? ' hidden' : '' }}>
-                                    <label for="village">Village</label>
+                                    <label for="village">Home Address</label>
                                     <input id="village" type="text" name="village" value="{{ old('village') }}"{{ old('district') === 'Other' ? '' : ' required' }}>
                                 </div>
 

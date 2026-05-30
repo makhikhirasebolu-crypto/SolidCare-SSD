@@ -314,11 +314,11 @@
                                         <span>{{ $application->created_at->format('F j, Y g:i A') }}</span>
                                     </div>
                                     <div class="info-item">
-                                        <span class="info-label">District</span>
+                                        <span class="info-label">District and Village</span>
                                         <span>{{ $application->district ?: 'Not recorded' }}</span>
                                     </div>
                                     <div class="info-item">
-                                        <span class="info-label">Village</span>
+                                        <span class="info-label">Home Address</span>
                                         <span>{{ $application->village ?: 'Not recorded' }}</span>
                                     </div>
                                     <div class="info-item" style="grid-column: 1 / -1;">
