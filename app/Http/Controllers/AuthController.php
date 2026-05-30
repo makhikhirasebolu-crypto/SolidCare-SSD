@@ -23,6 +23,8 @@ use App\Models\Student;
 use App\Models\StudentReferral;
 use App\Models\User;
 use App\Models\YearLeader;
+use Illuminate\Auth\Events\Verified;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -235,12 +237,74 @@ class AuthController extends Controller
             'disability_details' => $data['disability_details'] ?? null,
         ]);
 
+        $emailSent = $this->sendStudentVerificationEmail($user);
+
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
         return redirect()
-            ->route('home')
-            ->with('status', 'Account created successfully. Welcome to SolidCare SSD.');
+            ->route('verification.notice')
+            ->with(
+                $emailSent ? 'status' : 'error',
+                $emailSent
+                    ? 'Account created successfully. We sent a verification link to your email address.'
+                    : 'Account created successfully, but the verification email could not be sent. Please use Resend Verification Email or contact SSD.'
+            );
+    }
+
+    public function showEmailVerificationNotice()
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return redirect()->route('home');
+        }
+
+        return view('auth.verify-email', ['user' => $user]);
+    }
+
+    public function verifyEmail(EmailVerificationRequest $request)
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return redirect()->route('home')->with('status', 'Your email address is already verified.');
+        }
+
+        if ($user->markEmailAsVerified()) {
+            event(new Verified($user));
+        }
+
+        return redirect()->route('home')->with('status', 'Email verified successfully. Welcome to SolidCare SSD.');
+    }
+
+    public function resendEmailVerification(Request $request)
+    {
+        if (! Auth::guard('web')->check()) {
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return redirect()->route('home');
+        }
+
+        $emailSent = $this->sendStudentVerificationEmail($user);
+
+        return back()->with(
+            $emailSent ? 'status' : 'error',
+            $emailSent
+                ? 'A new verification link has been sent to your email address.'
+                : 'The verification email could not be sent. Please contact SSD if this continues.'
+        );
     }
 
     protected function registerAdminFromStudentPortal(Request $request)
@@ -474,7 +538,31 @@ class AuthController extends Controller
             return redirect()->route('password.temporary');
         }
 
+        if ($user->role === 'student' && ! $user->hasVerifiedEmail()) {
+            return redirect()->route('verification.notice');
+        }
+
         return redirect()->intended(route('home'));
+    }
+
+    protected function sendStudentVerificationEmail(User $user): bool
+    {
+        try {
+            $user->sendEmailVerificationNotification();
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('Student verification email could not be sent.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'mailer' => config('mail.default'),
+                'mail_host' => config('mail.mailers.smtp.host'),
+                'queue_connection' => config('queue.default'),
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     protected function normalizeLoginIdentifier(?string $value): ?string
@@ -577,6 +665,13 @@ class AuthController extends Controller
 
         if (!Auth::guard('web')->check()) {
             return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = Auth::guard('web')->user();
+
+        if ($user->role === 'student' && ! $user->hasVerifiedEmail()) {
+            return redirect()->route('verification.notice');
         }
 
         return view('dashboard');

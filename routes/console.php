@@ -3,14 +3,113 @@
 use App\Mail\ClinicStockExpiryReminder;
 use App\Models\ClinicStockReceipt;
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Str;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('mail:brevo-test {email : The real email address that should receive the test message}', function (string $email) {
+    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $this->error('Please provide a valid email address.');
+
+        return 1;
+    }
+
+    $this->info('Mailer: ' . config('mail.default'));
+    $this->info('Host: ' . config('mail.mailers.smtp.host'));
+    $this->info('Port: ' . config('mail.mailers.smtp.port'));
+    $this->info('Queue: ' . config('queue.default'));
+    $this->info('Sending Brevo SMTP test email to ' . $email . '...');
+
+    try {
+        Mail::raw('This is a test email from SolidCare SSD through Brevo SMTP.', function ($message) use ($email) {
+            $message->to($email)
+                ->subject('SolidCare SSD Brevo Test');
+        });
+    } catch (Throwable $e) {
+        Log::error('Brevo SMTP test email failed.', [
+            'recipient' => $email,
+            'error' => $e->getMessage(),
+        ]);
+
+        $this->error('Email could not be sent: ' . $e->getMessage());
+        $this->warn('Check storage/logs/laravel.log for the full mail error.');
+
+        return 1;
+    }
+
+    $this->info('Test email handed off successfully. Check the inbox and spam folder.');
+
+    return 0;
+})->purpose('Send a direct Brevo SMTP test email.');
+
+Artisan::command('students:send-verification-emails {--email= : Send only to this student email} {--dry-run : List matching students without sending}', function () {
+    $query = User::query()
+        ->where('role', 'student')
+        ->whereNull('email_verified_at')
+        ->whereNotNull('email');
+
+    if ($email = $this->option('email')) {
+        $query->whereRaw('LOWER(TRIM(email)) = ?', [Str::lower(trim((string) $email))]);
+    }
+
+    $students = $query
+        ->orderBy('id')
+        ->get(['id', 'name', 'email', 'email_verified_at', 'role']);
+
+    if ($students->isEmpty()) {
+        $this->info('No unverified student accounts matched.');
+
+        return 0;
+    }
+
+    if ($this->option('dry-run')) {
+        $students->each(function (User $student) {
+            $this->line($student->id . ' | ' . $student->name . ' | ' . $student->email);
+        });
+
+        $this->info($students->count() . ' unverified student account(s) matched. No emails were sent.');
+
+        return 0;
+    }
+
+    $sent = 0;
+    $failed = 0;
+
+    foreach ($students as $student) {
+        if (! filter_var($student->email, FILTER_VALIDATE_EMAIL)) {
+            $this->warn('Skipped invalid email for user #' . $student->id . ': ' . $student->email);
+            $failed++;
+            continue;
+        }
+
+        try {
+            $student->notify(new VerifyEmail);
+            $this->info('Sent verification email to ' . $student->email);
+            $sent++;
+        } catch (Throwable $e) {
+            Log::error('Student verification email failed.', [
+                'user_id' => $student->id,
+                'email' => $student->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->error('Failed to send to ' . $student->email . ': ' . $e->getMessage());
+            $failed++;
+        }
+    }
+
+    $this->info($sent . ' verification email(s) sent. ' . $failed . ' failed.');
+
+    return $failed > 0 ? 1 : 0;
+})->purpose('Send verification emails to existing unverified student accounts.');
 
 Artisan::command('clinic:send-expiry-reminders', function () {
     $recipients = User::query()

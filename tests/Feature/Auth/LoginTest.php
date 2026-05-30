@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Admin;
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -111,7 +112,7 @@ class LoginTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
-    public function test_registration_logs_in_the_student_and_redirects_home(): void
+    public function test_registration_logs_in_the_student_and_redirects_to_email_verification(): void
     {
         Notification::fake();
 
@@ -125,7 +126,7 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('home'));
+        $response->assertRedirect(route('verification.notice'));
 
         $this->assertDatabaseHas('users', [
             'email' => 'lehananthati@gmail.com',
@@ -139,8 +140,11 @@ class LoginTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertSessionHas('status', 'Account created successfully. Welcome to SolidCare SSD.');
-        Notification::assertNothingSent();
+        $response->assertSessionHas('status', 'Account created successfully. We sent a verification link to your email address.');
+        Notification::assertSentTo(
+            User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
+            VerifyEmail::class
+        );
     }
 
     public function test_registration_does_not_require_admin_email_approval(): void
@@ -157,7 +161,7 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('home'));
+        $response->assertRedirect(route('verification.notice'));
 
         $this->assertDatabaseHas('users', [
             'email' => 'lehananthati@gmail.com',
@@ -167,7 +171,10 @@ class LoginTest extends TestCase
         ]);
         $this->assertDatabaseCount('students', 1);
         $this->assertAuthenticated();
-        Notification::assertNothingSent();
+        Notification::assertSentTo(
+            User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
+            VerifyEmail::class
+        );
     }
 
     public function test_limkokwing_name_surname_email_registers_as_admin_from_student_portal(): void
@@ -467,7 +474,7 @@ class LoginTest extends TestCase
         Notification::assertNothingSent();
     }
 
-    public function test_registration_does_not_send_verification_email_or_block_home_access(): void
+    public function test_student_registration_sends_verification_email_and_blocks_home_until_verified(): void
     {
         Notification::fake();
 
@@ -481,15 +488,20 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('home'));
+        $response->assertRedirect(route('verification.notice'));
         $this->assertDatabaseHas('users', [
             'email' => 'missing@example.invalid',
             'email_verified_at' => null,
         ]);
 
+        $user = User::where('email', 'missing@example.invalid')->firstOrFail();
+        Notification::assertSentTo($user, VerifyEmail::class);
+
         $homeResponse = $this->get(route('home'));
-        $homeResponse->assertOk();
-        Notification::assertNothingSent();
+        $homeResponse->assertRedirect(route('verification.notice'));
+
+        $accommodationResponse = $this->get(route('accommodation'));
+        $accommodationResponse->assertRedirect(route('verification.notice'));
     }
 
     public function test_new_student_registration_is_denied_when_national_id_already_exists(): void
