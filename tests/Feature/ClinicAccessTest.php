@@ -146,14 +146,14 @@ class ClinicAccessTest extends TestCase
         $this->assertDatabaseHas('clinic_stock_items', [
             'medicine_name' => 'Paracetamol 500mg',
             'quantity_received' => 200,
-            'expiry_date' => '2027-12-31',
+            'expiry_date' => '2027-12-31 00:00:00',
             'dosage_form' => 'Tablets',
             'important_notes' => 'Pain relief; fever reduction',
         ]);
 
         $this->assertDatabaseHas('clinic_stock_receipts', [
             'quantity_received' => 200,
-            'expiry_date' => '2027-12-31',
+            'expiry_date' => '2027-12-31 00:00:00',
             'dosage_form' => 'Tablets',
             'important_notes' => 'Pain relief; fever reduction',
         ]);
