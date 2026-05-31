@@ -1047,7 +1047,7 @@
                         <div class="board-card p-4">
                             <h3>Add Stock</h3>
                             <p class="text-secondary">
-                                Enter medicine name, quantity received, and expiry date. Records are saved to <code>clinic_stock_receipts</code> with automatic received date.
+                                Enter medicine/item name, quantity received, expiry date, dosage/form, and important notes. Records are saved to <code>clinic_stock_receipts</code> with automatic received date.
                             </p>
 
                             <div class="d-grid gap-2 mb-3">
@@ -1064,7 +1064,7 @@
                                     <div class="stock-entry-group">
                                         <div class="row g-3">
                                             <div class="col-12">
-                                                <label class="form-label">Medicine Name</label>
+                                                <label class="form-label">Medicine/Item Name</label>
                                                 <input type="text" name="stock_entries[0][medicine_name]" class="form-control" required>
                                             </div>
                                             <div class="col-12">
@@ -1074,6 +1074,14 @@
                                             <div class="col-12">
                                                 <label class="form-label">Expiry Date</label>
                                                 <input type="date" name="stock_entries[0][expiry_date]" class="form-control" required>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label">Dosage/Form</label>
+                                                <input type="text" name="stock_entries[0][dosage_form]" class="form-control" placeholder="Tablets">
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label">Important Notes</label>
+                                                <textarea name="stock_entries[0][important_notes]" rows="2" class="form-control" placeholder="Pain relief; fever reduction"></textarea>
                                             </div>
                                         </div>
                                     </div>
@@ -1119,6 +1127,8 @@
                                         <div>Issued: {{ $item->quantity_issued }}</div>
                                         <div>Date Entered: {{ optional($item->firstReceipt?->received_date ?? $item->created_at)->format('F j, Y') ?? 'Not recorded' }}</div>
                                         <div>Expiry Date: {{ optional($item->expiry_date)->format('F j, Y') ?? 'Not recorded' }}</div>
+                                        <div>Dosage/Form: {{ $item->dosage_form ?: 'Not recorded' }}</div>
+                                        <div>Important Notes: {{ $item->important_notes ?: 'Not recorded' }}</div>
                                         <div>
                                             Confirmed:
                                             @if ($item->confirmed_at)
@@ -1651,10 +1661,12 @@
                                                         <table class="report-table">
                                                             <thead>
                                                                 <tr>
-                                                                    <th>Medicine</th>
+                                                                    <th>Medicine/Item Name</th>
                                                                     <th>Available Stock</th>
                                                                     <th>Date Entered</th>
                                                                     <th>Expiry Date</th>
+                                                                    <th>Dosage/Form</th>
+                                                                    <th>Important Notes</th>
                                                                     <th>Status</th>
                                                                     <th>Action</th>
                                                                 </tr>
@@ -1666,6 +1678,8 @@
                                                                         <td>{{ number_format($item->balance) }}</td>
                                                                         <td>{{ optional($item->firstReceipt?->received_date ?? $item->created_at)->format('M j, Y') ?? 'Not recorded' }}</td>
                                                                         <td>{{ optional($item->expiry_date)->format('M j, Y') ?? 'Not recorded' }}</td>
+                                                                        <td>{{ $item->dosage_form ?: 'Not recorded' }}</td>
+                                                                        <td>{{ $item->important_notes ?: 'Not recorded' }}</td>
                                                                         <td>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $item->status)) }}</td>
                                                                         <td>
                                                                             <form method="POST" action="{{ route('clinic.stock.delete', $item) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this stock item?');">
@@ -1902,7 +1916,7 @@
                         wrapper.innerHTML = `
                             <div class="row g-3">
                                 <div class="col-12">
-                                    <label class="form-label">Medicine Name</label>
+                                    <label class="form-label">Medicine/Item Name</label>
                                     <input type="text" name="stock_entries[${stockIndex}][medicine_name]" class="form-control" required>
                                 </div>
                                 <div class="col-12">
@@ -1912,6 +1926,14 @@
                                 <div class="col-12">
                                     <label class="form-label">Expiry Date</label>
                                     <input type="date" name="stock_entries[${stockIndex}][expiry_date]" class="form-control" required>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Dosage/Form</label>
+                                    <input type="text" name="stock_entries[${stockIndex}][dosage_form]" class="form-control" placeholder="Tablets">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Important Notes</label>
+                                    <textarea name="stock_entries[${stockIndex}][important_notes]" rows="2" class="form-control" placeholder="Pain relief; fever reduction"></textarea>
                                 </div>
                             </div>
                         `;

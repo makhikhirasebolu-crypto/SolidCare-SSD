@@ -117,6 +117,54 @@ class ClinicAccessTest extends TestCase
         ]);
     }
 
+    public function test_senior_nurse_can_add_stock_with_dosage_form_and_notes(): void
+    {
+        $nurse = User::create([
+            'name' => 'Tau Tau',
+            'email' => 'nurse@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password123',
+            'role' => 'senior_nurse_officer',
+        ]);
+
+        $response = $this->actingAs($nurse)->post(route('clinic.stock.store'), [
+            'clinic_panel' => 'add-stock',
+            'stock_entries' => [
+                [
+                    'medicine_name' => 'Paracetamol 500mg',
+                    'quantity_received' => 200,
+                    'expiry_date' => '2027-12-31',
+                    'dosage_form' => 'Tablets',
+                    'important_notes' => 'Pain relief; fever reduction',
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect(route('clinic'));
+        $response->assertSessionHas('success', '1 stock item(s) added successfully.');
+
+        $this->assertDatabaseHas('clinic_stock_items', [
+            'medicine_name' => 'Paracetamol 500mg',
+            'quantity_received' => 200,
+            'expiry_date' => '2027-12-31',
+            'dosage_form' => 'Tablets',
+            'important_notes' => 'Pain relief; fever reduction',
+        ]);
+
+        $this->assertDatabaseHas('clinic_stock_receipts', [
+            'quantity_received' => 200,
+            'expiry_date' => '2027-12-31',
+            'dosage_form' => 'Tablets',
+            'important_notes' => 'Pain relief; fever reduction',
+        ]);
+
+        $this->actingAs($nurse)->get(route('clinic', ['clinic_panel' => 'stock-details']))
+            ->assertOk()
+            ->assertSee('Paracetamol 500mg')
+            ->assertSee('Dosage/Form: Tablets')
+            ->assertSee('Important Notes: Pain relief; fever reduction');
+    }
+
     public function test_deleted_clinic_stock_does_not_reappear_after_clinic_page_reload(): void
     {
         $executive = User::create([

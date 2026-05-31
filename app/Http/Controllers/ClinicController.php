@@ -48,11 +48,15 @@ class ClinicController extends Controller
             'stock_entries' => ['required', 'array', 'min:1'],
             'stock_entries.*.medicine_name' => ['required', 'string', 'max:255'],
             'stock_entries.*.quantity_received' => ['required', 'integer', 'min:0'],
+            'stock_entries.*.dosage_form' => ['nullable', 'string', 'max:255'],
+            'stock_entries.*.important_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         foreach ($data['stock_entries'] as $entry) {
             $existingItem = ClinicStockItem::whereRaw('LOWER(medicine_name) = ?', [strtolower($entry['medicine_name'])])->first();
             $receivedQuantity = (int) $entry['quantity_received'];
+            $dosageForm = $this->normalizeOptionalText($entry['dosage_form'] ?? null);
+            $importantNotes = $this->normalizeOptionalText($entry['important_notes'] ?? null);
 
             if ($existingItem) {
                 $openingStock = $existingItem->opening_stock;
@@ -63,21 +67,25 @@ class ClinicController extends Controller
                     'opening_stock' => $openingStock,
                     'quantity_received' => $quantityReceived,
                     'quantity_issued' => $quantityIssued,
+                    'dosage_form' => $dosageForm ?? $existingItem->dosage_form,
+                    'important_notes' => $importantNotes ?? $existingItem->important_notes,
                     'confirmed_at' => null,
                     'confirmed_by_user_id' => null,
                     'status' => $this->resolveClinicStockStatus($openingStock + $quantityReceived - $quantityIssued),
                 ]);
 
-                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity);
+                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity, $dosageForm, $importantNotes);
                 continue;
             }
 
             $entry['status'] = $this->resolveClinicStockStatus($entry['quantity_received']);
             $entry['opening_stock'] = 0;
             $entry['quantity_issued'] = 0;
+            $entry['dosage_form'] = $dosageForm;
+            $entry['important_notes'] = $importantNotes;
 
             $createdItem = ClinicStockItem::create($entry);
-            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity);
+            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity, $dosageForm, $importantNotes);
         }
 
         return redirect()->route('clinic')->with('success', count($data['stock_entries']) . ' stock item(s) added successfully.');
@@ -100,16 +108,22 @@ class ClinicController extends Controller
             'opening_stock' => ['required', 'integer', 'min:0'],
             'quantity_received' => ['required', 'integer', 'min:0'],
             'quantity_issued' => ['required', 'integer', 'min:0'],
+            'dosage_form' => ['nullable', 'string', 'max:255'],
+            'important_notes' => ['nullable', 'string', 'max:2000'],
             'status' => ['required', 'in:pending_review,in_stock,low_stock,out_of_stock'],
         ]);
 
         $previousQuantityReceived = $item->quantity_received;
         $balance = $data['opening_stock'] + $data['quantity_received'] - $data['quantity_issued'];
+        $dosageForm = $this->normalizeOptionalText($data['dosage_form'] ?? null);
+        $importantNotes = $this->normalizeOptionalText($data['important_notes'] ?? null);
 
         $item->update([
             'opening_stock' => $data['opening_stock'],
             'quantity_received' => $data['quantity_received'],
             'quantity_issued' => $data['quantity_issued'],
+            'dosage_form' => $dosageForm,
+            'important_notes' => $importantNotes,
             'confirmed_at' => $data['quantity_received'] > 0 ? null : $item->confirmed_at,
             'confirmed_by_user_id' => $data['quantity_received'] > 0 ? null : $item->confirmed_by_user_id,
             'status' => $this->resolveClinicStockStatus($balance),
@@ -117,7 +131,7 @@ class ClinicController extends Controller
 
         $newlyRecordedReceived = $data['quantity_received'] - $previousQuantityReceived;
         if ($newlyRecordedReceived > 0) {
-            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived);
+            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived, $dosageForm, $importantNotes);
         }
 
         return redirect()->route('clinic')->with('success', $item->medicine_name . ' stock updated successfully.');
@@ -374,13 +388,16 @@ class ClinicController extends Controller
 
             fputcsv($handle, []);
             fputcsv($handle, ['Stock Received Report']);
-            fputcsv($handle, ['Medicine', 'Quantity Received', 'Date Received']);
+            fputcsv($handle, ['Medicine/Item Name', 'Quantity Received', 'Date Received', 'Expiry Date', 'Dosage/Form', 'Important Notes']);
 
             foreach ($stockReceipts as $receipt) {
                 fputcsv($handle, [
                     $receipt->stock_medicine_name ?? 'Unknown',
                     $receipt->quantity_received,
                     optional($receipt->received_date)->format('Y-m-d') ?? optional($receipt->created_at)->format('Y-m-d') ?? '',
+                    optional($receipt->expiry_date)->format('Y-m-d') ?? '',
+                    $receipt->dosage_form ?? '',
+                    $receipt->important_notes ?? '',
                 ]);
             }
 
@@ -545,7 +562,13 @@ class ClinicController extends Controller
         ]);
     }
 
-    protected function recordClinicStockReceipt(ClinicStockItem $item, User $user, int $quantityReceived): void
+    protected function recordClinicStockReceipt(
+        ClinicStockItem $item,
+        User $user,
+        int $quantityReceived,
+        ?string $dosageForm = null,
+        ?string $importantNotes = null
+    ): void
     {
         if ($quantityReceived <= 0) {
             return;
@@ -556,7 +579,20 @@ class ClinicController extends Controller
             'user_id' => $user->id,
             'quantity_received' => $quantityReceived,
             'received_date' => now()->toDateString(),
+            'dosage_form' => $dosageForm,
+            'important_notes' => $importantNotes,
         ]);
+    }
+
+    protected function normalizeOptionalText(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value !== '' ? $value : null;
     }
 
     protected function reportFiltersFromRequest(Request $request): array

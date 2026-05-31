@@ -1125,12 +1125,16 @@ class AuthController extends Controller
             'stock_entries.*.medicine_name' => ['required', 'string', 'max:255'],
             'stock_entries.*.quantity_received' => ['required', 'integer', 'min:0'],
             'stock_entries.*.expiry_date' => ['required', 'date', 'after_or_equal:today'],
+            'stock_entries.*.dosage_form' => ['nullable', 'string', 'max:255'],
+            'stock_entries.*.important_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         foreach ($data['stock_entries'] as $entry) {
             $existingItem = ClinicStockItem::whereRaw('LOWER(medicine_name) = ?', [strtolower($entry['medicine_name'])])->first();
             $receivedQuantity = (int) $entry['quantity_received'];
             $expiryDate = Carbon::parse($entry['expiry_date'])->toDateString();
+            $dosageForm = $this->normalizeOptionalText($entry['dosage_form'] ?? null);
+            $importantNotes = $this->normalizeOptionalText($entry['important_notes'] ?? null);
 
             if ($existingItem) {
                 $openingStock = $existingItem->opening_stock;
@@ -1142,6 +1146,8 @@ class AuthController extends Controller
                     'quantity_received' => $quantityReceived,
                     'quantity_issued' => $quantityIssued,
                     'expiry_date' => $this->resolveClinicStockItemExpiryDate($existingItem, $expiryDate),
+                    'dosage_form' => $dosageForm ?? $existingItem->dosage_form,
+                    'important_notes' => $importantNotes ?? $existingItem->important_notes,
                     'confirmed_at' => null,
                     'confirmed_by_user_id' => null,
                     'status' => $this->resolveClinicStockStatus(
@@ -1150,7 +1156,7 @@ class AuthController extends Controller
                     ),
                 ]);
 
-                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity, $expiryDate);
+                $this->recordClinicStockReceipt($existingItem, $user, $receivedQuantity, $expiryDate, $dosageForm, $importantNotes);
                 continue;
             }
 
@@ -1161,9 +1167,11 @@ class AuthController extends Controller
             $entry['opening_stock'] = 0;
             $entry['quantity_issued'] = 0;
             $entry['expiry_date'] = $expiryDate;
+            $entry['dosage_form'] = $dosageForm;
+            $entry['important_notes'] = $importantNotes;
 
             $createdItem = ClinicStockItem::create($entry);
-            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity, $expiryDate);
+            $this->recordClinicStockReceipt($createdItem, $user, $receivedQuantity, $expiryDate, $dosageForm, $importantNotes);
         }
 
         return $this->redirectToClinicPanel($request, 'add-stock')
@@ -2478,17 +2486,23 @@ class AuthController extends Controller
             'quantity_received' => ['required', 'integer', 'min:0'],
             'quantity_issued' => ['required', 'integer', 'min:0'],
             'expiry_date' => ['required', 'date', 'after_or_equal:today'],
+            'dosage_form' => ['nullable', 'string', 'max:255'],
+            'important_notes' => ['nullable', 'string', 'max:2000'],
             'status' => ['required', 'in:pending_review,in_stock,low_stock,out_of_stock'],
         ]);
 
         $previousQuantityReceived = $item->quantity_received;
         $balance = $data['opening_stock'] + $data['quantity_received'] - $data['quantity_issued'];
+        $dosageForm = $this->normalizeOptionalText($data['dosage_form'] ?? null);
+        $importantNotes = $this->normalizeOptionalText($data['important_notes'] ?? null);
 
         $item->update([
             'opening_stock' => $data['opening_stock'],
             'quantity_received' => $data['quantity_received'],
             'quantity_issued' => $data['quantity_issued'],
             'expiry_date' => Carbon::parse($data['expiry_date'])->toDateString(),
+            'dosage_form' => $dosageForm,
+            'important_notes' => $importantNotes,
             'confirmed_at' => $data['quantity_received'] > 0 ? null : $item->confirmed_at,
             'confirmed_by_user_id' => $data['quantity_received'] > 0 ? null : $item->confirmed_by_user_id,
             'status' => $this->resolveClinicStockStatus($balance, $data['opening_stock'] + $data['quantity_received']),
@@ -2496,7 +2510,7 @@ class AuthController extends Controller
 
         $newlyRecordedReceived = $data['quantity_received'] - $previousQuantityReceived;
         if ($newlyRecordedReceived > 0) {
-            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived, Carbon::parse($data['expiry_date'])->toDateString());
+            $this->recordClinicStockReceipt($item->fresh(), $user, $newlyRecordedReceived, Carbon::parse($data['expiry_date'])->toDateString(), $dosageForm, $importantNotes);
         }
 
         return $this->redirectToClinicPanel($request, 'stock-details')
@@ -2794,19 +2808,22 @@ class AuthController extends Controller
 
             fputcsv($handle, []);
             fputcsv($handle, ['Stock Received Report']);
-            fputcsv($handle, ['Medicine', 'Quantity Received', 'Date Received']);
+            fputcsv($handle, ['Medicine/Item Name', 'Quantity Received', 'Date Received', 'Expiry Date', 'Dosage/Form', 'Important Notes']);
 
             foreach ($stockReceipts as $receipt) {
                 fputcsv($handle, [
                     $receipt->stock_medicine_name ?? 'Unknown',
                     $receipt->quantity_received,
                     optional($receipt->received_date)->format('Y-m-d') ?? optional($receipt->created_at)->format('Y-m-d') ?? '',
+                    optional($receipt->expiry_date)->format('Y-m-d') ?? '',
+                    $receipt->dosage_form ?? '',
+                    $receipt->important_notes ?? '',
                 ]);
             }
 
             fputcsv($handle, []);
             fputcsv($handle, ['Available Stock']);
-            fputcsv($handle, ['Medicine', 'Available Stock', 'Date Entered', 'Expiry Date', 'Status']);
+            fputcsv($handle, ['Medicine/Item Name', 'Available Stock', 'Date Entered', 'Expiry Date', 'Dosage/Form', 'Important Notes', 'Status']);
 
             if ($reportStockItems->isEmpty()) {
                 fputcsv($handle, ['No available stock found for this report.']);
@@ -2817,6 +2834,8 @@ class AuthController extends Controller
                         $item->balance,
                         optional($item->firstReceipt?->received_date ?? $item->created_at)->format('Y-m-d') ?? '',
                         optional($item->expiry_date)->format('Y-m-d') ?? '',
+                        $item->dosage_form ?? '',
+                        $item->important_notes ?? '',
                         Str::headline(str_replace('_', ' ', $item->status)),
                     ]);
                 }
@@ -3861,7 +3880,14 @@ class AuthController extends Controller
         ]);
     }
 
-    protected function recordClinicStockReceipt(ClinicStockItem $item, User $user, int $quantityReceived, string $expiryDate): void
+    protected function recordClinicStockReceipt(
+        ClinicStockItem $item,
+        User $user,
+        int $quantityReceived,
+        string $expiryDate,
+        ?string $dosageForm = null,
+        ?string $importantNotes = null
+    ): void
     {
         if ($quantityReceived <= 0) {
             return;
@@ -3873,7 +3899,20 @@ class AuthController extends Controller
             'quantity_received' => $quantityReceived,
             'received_date' => now()->toDateString(),
             'expiry_date' => $expiryDate,
+            'dosage_form' => $dosageForm,
+            'important_notes' => $importantNotes,
         ]);
+    }
+
+    protected function normalizeOptionalText(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value !== '' ? $value : null;
     }
 
     protected function resolveClinicStockItemExpiryDate(ClinicStockItem $item, string $incomingExpiryDate): string

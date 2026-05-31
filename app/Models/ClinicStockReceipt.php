@@ -15,6 +15,8 @@ class ClinicStockReceipt extends Model
         'quantity_received',
         'received_date',
         'expiry_date',
+        'dosage_form',
+        'important_notes',
         'expiry_month_notice_sent_at',
         'expiry_week_notice_sent_at',
     ];

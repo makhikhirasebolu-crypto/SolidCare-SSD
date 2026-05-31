@@ -15,6 +15,8 @@ class ClinicStockItem extends Model
         'quantity_received',
         'quantity_issued',
         'expiry_date',
+        'dosage_form',
+        'important_notes',
         'status',
         'confirmed_at',
         'confirmed_by_user_id',
