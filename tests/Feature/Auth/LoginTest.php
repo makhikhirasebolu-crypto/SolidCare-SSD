@@ -4,7 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Admin;
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use App\Notifications\QueuedVerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -158,7 +158,7 @@ class LoginTest extends TestCase
         $response->assertSessionHas('status', 'Account created successfully. We sent a verification link to your email address.');
         Notification::assertSentTo(
             User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
-            VerifyEmail::class
+            QueuedVerifyEmail::class
         );
     }
 
@@ -188,7 +188,7 @@ class LoginTest extends TestCase
         $this->assertAuthenticated();
         Notification::assertSentTo(
             User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
-            VerifyEmail::class
+            QueuedVerifyEmail::class
         );
     }
 
@@ -560,7 +560,7 @@ class LoginTest extends TestCase
         ]);
 
         $user = User::where('email', 'missing@example.invalid')->firstOrFail();
-        Notification::assertSentTo($user, VerifyEmail::class);
+        Notification::assertSentTo($user, QueuedVerifyEmail::class);
 
         $homeResponse = $this->get(route('home'));
         $homeResponse->assertRedirect(route('verification.notice'));

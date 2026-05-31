@@ -23,6 +23,7 @@ use App\Models\Student;
 use App\Models\StudentReferral;
 use App\Models\User;
 use App\Models\YearLeader;
+use App\Notifications\QueuedVerifyEmail;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -596,7 +597,7 @@ class AuthController extends Controller
     protected function sendStudentVerificationEmail(User $user): bool
     {
         try {
-            $user->sendEmailVerificationNotification();
+            $user->notify((new QueuedVerifyEmail())->onConnection('background'));
 
             return true;
         } catch (\Throwable $e) {
