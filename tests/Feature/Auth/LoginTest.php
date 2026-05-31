@@ -77,6 +77,20 @@ class LoginTest extends TestCase
         $this->assertAuthenticatedAs($admin, 'admin');
     }
 
+    public function test_logout_get_fallback_logs_out_without_method_error(): void
+    {
+        $admin = Admin::create([
+            'name' => 'SSD Admin',
+            'email' => 'admin@limkokwing.ac.ls',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->get('/logout');
+
+        $response->assertRedirect(route('login'));
+        $this->assertGuest('admin');
+    }
+
     public function test_login_failure_shows_a_hint_for_common_email_domain_typos(): void
     {
         $response = $this->from('/')->post('/login', [
