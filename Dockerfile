@@ -33,6 +33,5 @@ RUN chmod -R 775 storage bootstrap/cache
 # Expose Render port
 EXPOSE 10000
 
-# Start Laravel app
-CMD php artisan migrate --force || true && \
-    php artisan serve --host=0.0.0.0 --port=10000
+# Start Laravel app and the queue worker that sends verification emails.
+CMD sh -c "php artisan migrate --force || true; php artisan queue:work database --tries=3 --timeout=60 & exec php artisan serve --host=0.0.0.0 --port=10000"

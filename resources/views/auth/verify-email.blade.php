@@ -103,10 +103,10 @@
         @endif
 
         <p>
-            We sent a verification link to
+            We are sending a verification link to
             <span class="email">{{ $user->email }}</span>
         </p>
-        <p>Open that email and confirm your address before continuing to SolidCare SSD.</p>
+        <p>Open that email and confirm your address before continuing to SolidCare SSD. If it is not in your inbox, check spam or resend it.</p>
 
         <form method="POST" action="{{ route('verification.send') }}">
             @csrf

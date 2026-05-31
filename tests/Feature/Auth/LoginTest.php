@@ -155,7 +155,7 @@ class LoginTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertSessionHas('status', 'Account created successfully. We sent a verification link to your email address.');
+        $response->assertSessionHas('status', 'Account created successfully. We are sending a verification link to your email address.');
         Notification::assertSentTo(
             User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
             QueuedVerifyEmail::class

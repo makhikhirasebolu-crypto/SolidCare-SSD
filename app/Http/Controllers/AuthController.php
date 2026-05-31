@@ -261,8 +261,8 @@ class AuthController extends Controller
             ->with(
                 $emailSent ? 'status' : 'error',
                 $emailSent
-                    ? 'Account created successfully. We sent a verification link to your email address.'
-                    : 'Account created successfully, but the verification email could not be sent. Please use Resend Verification Email or contact SSD.'
+                    ? 'Account created successfully. We are sending a verification link to your email address.'
+                    : 'Account created successfully, but the verification email could not be queued. Please use Resend Verification Email or contact SSD.'
             );
     }
 
@@ -354,8 +354,8 @@ class AuthController extends Controller
         return back()->with(
             $emailSent ? 'status' : 'error',
             $emailSent
-                ? 'A new verification link has been sent to your email address.'
-                : 'The verification email could not be sent. Please contact SSD if this continues.'
+                ? 'A new verification link is being sent to your email address.'
+                : 'The verification email could not be queued. Please contact SSD if this continues.'
         );
     }
 
@@ -597,7 +597,7 @@ class AuthController extends Controller
     protected function sendStudentVerificationEmail(User $user): bool
     {
         try {
-            $user->notify((new QueuedVerifyEmail())->onConnection('background'));
+            $user->notify((new QueuedVerifyEmail())->onConnection('database'));
 
             return true;
         } catch (\Throwable $e) {
