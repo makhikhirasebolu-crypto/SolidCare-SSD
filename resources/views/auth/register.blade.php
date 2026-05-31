@@ -246,7 +246,7 @@
 
             <div id="student_id_field" style="display:none;">
                 <label>Student ID (if continuing)</label>
-                <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}">
+                <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}" inputmode="numeric" pattern="901[0-9]+" title="Student number must start with 901 and contain digits only.">
             </div>
 
             <div id="id_number_field" style="display:none;">

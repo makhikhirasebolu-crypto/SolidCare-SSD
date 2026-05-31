@@ -174,6 +174,7 @@ class AuthController extends Controller
     {
         $request->merge([
             'email' => $this->normalizeLoginIdentifier($request->input('email')),
+            'student_id' => $this->normalizeStudentId($request->input('student_id')),
             'id_number' => $this->normalizeNationalId($request->input('id_number')),
         ]);
 
@@ -195,7 +196,18 @@ class AuthController extends Controller
             ],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'student_type' => ['required', 'in:continuing,new'],
-            'student_id' => ['required_if:student_type,continuing', 'nullable', 'string', 'max:100', Rule::unique('users', 'student_id')],
+            'student_id' => [
+                'required_if:student_type,continuing',
+                'nullable',
+                'string',
+                'max:100',
+                'regex:/^901\d+$/',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($this->studentIdAlreadyRegistered($value)) {
+                        $fail('This student number is already registered.');
+                    }
+                },
+            ],
             'id_number' => [
                 'required_if:student_type,new',
                 'nullable',
@@ -211,7 +223,9 @@ class AuthController extends Controller
             'disability_details' => ['nullable', 'string', 'max:1000'],
         ];
 
-        $data = $request->validate($rules);
+        $data = $request->validate($rules, [
+            'student_id.regex' => 'Student number must start with 901 and contain digits only.',
+        ]);
 
         $user = User::create([
             'name' => $data['name'],
@@ -3311,6 +3325,17 @@ class AuthController extends Controller
         return $nationalId !== '' ? $nationalId : null;
     }
 
+    protected function normalizeStudentId(mixed $studentId): ?string
+    {
+        if (! is_string($studentId)) {
+            return null;
+        }
+
+        $studentId = trim($studentId);
+
+        return $studentId !== '' ? $studentId : null;
+    }
+
     protected function formatAccommodationRoomLabel(?AccommodationRoom $room): ?string
     {
         if (! $room) {
@@ -3911,6 +3936,24 @@ class AuthController extends Controller
             || Student::query()
                 ->whereNotNull('id_number')
                 ->whereRaw('LOWER(TRIM(id_number)) = ?', [$needle])
+                ->exists();
+    }
+
+    protected function studentIdAlreadyRegistered(mixed $studentId): bool
+    {
+        $normalizedStudentId = $this->normalizeStudentId($studentId);
+
+        if (! $normalizedStudentId) {
+            return false;
+        }
+
+        return User::query()
+            ->whereNotNull('student_id')
+            ->whereRaw('TRIM(student_id) = ?', [$normalizedStudentId])
+            ->exists()
+            || Student::query()
+                ->whereNotNull('student_id')
+                ->whereRaw('TRIM(student_id) = ?', [$normalizedStudentId])
                 ->exists();
     }
 

@@ -569,6 +569,65 @@ class LoginTest extends TestCase
         $accommodationResponse->assertRedirect(route('verification.notice'));
     }
 
+    public function test_continuing_student_registration_requires_unique_student_number(): void
+    {
+        $existingUser = User::create([
+            'name' => 'Existing Student',
+            'email' => 'existing.student@gmail.com',
+            'password' => 'password123',
+            'role' => 'student',
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        \App\Models\Student::create([
+            'user_id' => $existingUser->id,
+            'student_type' => 'continuing',
+            'student_id' => '901015687',
+            'disability' => 'no',
+        ]);
+
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Another Student',
+            'email' => 'another.student@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'continuing',
+            'student_id' => ' 901015687 ',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors([
+            'student_id' => 'This student number is already registered.',
+        ]);
+
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('students', 1);
+        $this->assertGuest();
+    }
+
+    public function test_continuing_student_number_must_start_with_901(): void
+    {
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Another Student',
+            'email' => 'another.student@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'continuing',
+            'student_id' => '801015687',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors('student_id');
+
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('students', 0);
+        $this->assertGuest();
+    }
+
     public function test_student_can_verify_email_even_if_another_student_session_is_active(): void
     {
         $activeUser = User::create([
