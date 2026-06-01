@@ -195,6 +195,7 @@ class AcademicReferralController extends Controller
             return redirect()->route('home')->with('error', 'Only Year Leaders, Executive, SSD Assistant 1, and SSD Assistant 2 can access Academic Supports.');
         }
 
+        $reportGenerated = $request->boolean('report_generated');
         $reportType = in_array($request->query('type'), ['general', 'week', 'month', 'semester', 'year'], true)
             ? $request->query('type')
             : 'general';
@@ -270,7 +271,7 @@ class AcademicReferralController extends Controller
         ];
 
         return view('academic.report', compact(
-            'referrals', 'reportType', 'year', 'month', 'semester', 'weekStartDate', 'endDate', 'reportLabel', 'trendTitle',
+            'referrals', 'reportGenerated', 'reportType', 'year', 'month', 'semester', 'weekStartDate', 'endDate', 'reportLabel', 'trendTitle',
             'totalReferrals', 'pendingReferrals', 'reviewedReferrals', 'resolvedReferrals',
             'criticalPriority', 'urgentPriority', 'normalPriority',
             'monthlyData', 'referrerData', 'priorityData', 'statusData',

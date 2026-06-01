@@ -29,7 +29,22 @@ class AcademicReferralVisibilityTest extends TestCase
             ->assertDontSee(route('academic.referrals.comment', $otherReferral), false);
     }
 
-    public function test_yearleader_report_contains_all_referred_students(): void
+    public function test_yearleader_report_opens_without_results_until_generated(): void
+    {
+        [$yearLeader] = $this->createYearLeaders();
+
+        $referral = $this->createReferral($yearLeader, 'Hidden Until Generated Student');
+
+        $response = $this->actingAs($yearLeader)->get(route('academic.referrals.report'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Generate Report')
+            ->assertDontSee('Total Referrals')
+            ->assertDontSee($referral->student_name);
+    }
+
+    public function test_yearleader_generated_report_contains_all_referred_students(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();
 
@@ -37,11 +52,14 @@ class AcademicReferralVisibilityTest extends TestCase
         $otherReferral = $this->createReferral($otherYearLeader, 'Other Report Student');
 
         $response = $this->actingAs($yearLeader)->get(route('academic.referrals.report', [
+            'report_generated' => 1,
+            'type' => 'year',
             'year' => now()->year,
         ]));
 
         $response
             ->assertOk()
+            ->assertSee('Total Referrals')
             ->assertSee($ownReferral->student_name)
             ->assertSee($otherReferral->student_name);
     }

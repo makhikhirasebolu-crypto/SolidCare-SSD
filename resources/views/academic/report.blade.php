@@ -426,7 +426,7 @@
                     </button>
                 </div>
 
-                <form method="GET" action="{{ route('academic.referrals.report') }}" class="report-filter-card report-generator-card {{ request()->boolean('report_generated') ? '' : 'hidden' }}" id="academic-report-filter-form">
+                <form method="GET" action="{{ route('academic.referrals.report') }}" class="report-filter-card report-generator-card {{ $reportGenerated ? '' : 'hidden' }}" id="academic-report-filter-form">
                     <input type="hidden" name="report_generated" value="1">
                     <input type="hidden" name="type" id="report-type-input" value="{{ $reportType }}">
 
@@ -482,6 +482,7 @@
                 </form>
             </div>
 
+            @if ($reportGenerated)
             <div class="report-kpi-grid">
                 <article class="report-kpi-card" style="--accent-color: var(--report-primary);">
                     <small>Total Referrals</small>
@@ -627,6 +628,7 @@
                     </tbody>
                 </table>
             </div>
+            @endif
         </div>
     </div>
 
