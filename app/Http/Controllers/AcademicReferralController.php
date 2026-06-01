@@ -317,10 +317,10 @@ class AcademicReferralController extends Controller
         }
 
         if ($reportType === 'year') {
-            $startDate = Carbon::create($year - 1, 8, 1)->startOfDay();
-            $endDate = Carbon::create($year, 7, 31)->endOfDay();
+            $startDate = Carbon::create($year, 8, 1)->startOfDay();
+            $endDate = Carbon::create($year + 1, 5, 31)->endOfDay();
 
-            return [$startDate, $endDate, 'Academic Year ' . ($year - 1) . '/' . $year];
+            return [$startDate, $endDate, 'Academic Year ' . $year . '/' . ($year + 1) . ' (Aug - May)'];
         }
 
         if ($reportType === 'month') {
