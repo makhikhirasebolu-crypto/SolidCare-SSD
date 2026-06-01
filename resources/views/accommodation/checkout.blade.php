@@ -16,7 +16,9 @@
 body {
     margin: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.58)),
+        url("https://www.limkokwing.com/photos/shares/img/lesotho.jpg") center / cover fixed;
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -26,12 +28,14 @@ body {
 
 /* FORM CONTAINER */
 .form-container {
-    background: #ffffff;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(6px);
     padding: 35px 30px;
     border-radius: 12px;
     width: 100%;
     max-width: 700px;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    box-shadow: 0 18px 45px rgba(0,0,0,0.28);
     animation: fadeIn 0.6s ease-in-out;
 }
 
@@ -97,7 +101,7 @@ button {
     margin-top: 25px;
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #667eea, #5a67d8);
+    background: #1f2937;
     color: #fff;
     font-size: 16px;
     border: none;
@@ -110,6 +114,7 @@ button {
 /* BUTTON HOVER */
 button:hover {
     transform: translateY(-1px);
+    background: #111827;
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
