@@ -199,7 +199,8 @@ class AcademicReferralController extends Controller
         $reportType = in_array($request->query('type'), ['general', 'week', 'month', 'semester', 'year'], true)
             ? $request->query('type')
             : 'general';
-        $year = (int) $request->query('year', $this->defaultAcademicYear(now()));
+        $defaultYear = $reportType === 'year' ? $this->defaultAcademicYear(now()) : now()->year;
+        $year = (int) $request->query('year', $defaultYear);
         $year = $year >= 2000 && $year <= 2100 ? $year : (int) now()->year;
         $month = (int) $request->query('month', now()->month);
         $month = $month >= 1 && $month <= 12 ? $month : (int) now()->month;
@@ -342,9 +343,9 @@ class AcademicReferralController extends Controller
             return [$startDate, $endDate, 'Week of ' . $startDate->format('M j, Y') . ' - ' . $endDate->format('M j, Y')];
         }
 
-        $startYear = $semester === 1 ? $year : $year + 1;
+        $startYear = $year;
         $startMonth = $semester === 1 ? 8 : 2;
-        $endYear = $year + 1;
+        $endYear = $semester === 1 ? $year + 1 : $year;
         $endMonth = $semester === 1 ? 1 : 7;
         $startDate = Carbon::create($startYear, $startMonth, 1)->startOfDay();
         $endDate = Carbon::create($endYear, $endMonth, 1)->endOfMonth()->endOfDay();
