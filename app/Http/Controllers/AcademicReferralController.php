@@ -7,6 +7,7 @@ use App\Models\AccommodationApplication;
 use App\Models\StudentReferral;
 use App\Models\ReferralComment;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Collection;
@@ -194,11 +195,32 @@ class AcademicReferralController extends Controller
             return redirect()->route('home')->with('error', 'Only Year Leaders, Executive, SSD Assistant 1, and SSD Assistant 2 can access Academic Supports.');
         }
 
-        $reportType = $request->get('type', 'general');
-        $year = $request->get('year', now()->year);
-        
-        $referrals = $this->referralQueryForUser($user)
-            ->whereYear('created_at', $year)
+        $reportType = in_array($request->query('type'), ['general', 'week', 'month', 'semester', 'year'], true)
+            ? $request->query('type')
+            : 'general';
+        $year = (int) $request->query('year', now()->year);
+        $year = $year >= 2000 && $year <= 2100 ? $year : (int) now()->year;
+        $month = (int) $request->query('month', now()->month);
+        $month = $month >= 1 && $month <= 12 ? $month : (int) now()->month;
+        $semester = (int) $request->query('semester', 1);
+        $semester = in_array($semester, [1, 2], true) ? $semester : 1;
+        $weekStartDate = $this->parseReportDate($request->query('week_start_date'), now()->startOfWeek());
+
+        [$startDate, $endDate, $reportLabel] = $this->resolveAcademicReportRange(
+            $reportType,
+            $year,
+            $month,
+            $semester,
+            $weekStartDate
+        );
+
+        $referralQuery = $this->referralQueryForUser($user);
+
+        if ($reportType !== 'general') {
+            $referralQuery->whereBetween('created_at', [$startDate, $endDate]);
+        }
+
+        $referrals = $referralQuery
             ->latest()
             ->get();
 
@@ -212,8 +234,16 @@ class AcademicReferralController extends Controller
         $urgentPriority = $referrals->filter(fn ($r) => $r->priority === 'Urgent');
         $normalPriority = $referrals->filter(fn ($r) => $r->priority === 'Normal');
 
-        // Group by month
-        $monthlyData = $referrals->groupBy(fn ($r) => $r->created_at->format('F'))
+        $trendTitle = match ($reportType) {
+            'week' => 'Daily Trend',
+            'month' => 'Daily Trend',
+            'semester' => 'Monthly Trend',
+            default => 'Monthly Trend',
+        };
+        $trendDateFormat = in_array($reportType, ['week', 'month'], true) ? 'M j' : 'F';
+
+        $monthlyData = $referrals->sortBy('created_at')
+            ->groupBy(fn ($r) => $r->created_at->format($trendDateFormat))
             ->map(fn ($group) => [
                 'total' => $group->count(),
                 'pending' => $group->filter(fn ($r) => $r->status === 'pending')->count(),
@@ -240,12 +270,63 @@ class AcademicReferralController extends Controller
         ];
 
         return view('academic.report', compact(
-            'referrals', 'reportType', 'year',
+            'referrals', 'reportType', 'year', 'month', 'semester', 'weekStartDate', 'endDate', 'reportLabel', 'trendTitle',
             'totalReferrals', 'pendingReferrals', 'reviewedReferrals', 'resolvedReferrals',
             'criticalPriority', 'urgentPriority', 'normalPriority',
             'monthlyData', 'referrerData', 'priorityData', 'statusData',
             'user'
         ));
+    }
+
+    protected function parseReportDate(mixed $value, Carbon $fallback): Carbon
+    {
+        try {
+            return filled($value)
+                ? Carbon::parse($value)->startOfDay()
+                : $fallback->copy()->startOfDay();
+        } catch (\Throwable) {
+            return $fallback->copy()->startOfDay();
+        }
+    }
+
+    protected function resolveAcademicReportRange(
+        string $reportType,
+        int $year,
+        int $month,
+        int $semester,
+        Carbon $weekStartDate
+    ): array {
+        if ($reportType === 'general') {
+            return [Carbon::create(1900, 1, 1)->startOfDay(), Carbon::create(2100, 12, 31)->endOfDay(), 'All Records'];
+        }
+
+        if ($reportType === 'year') {
+            $startDate = Carbon::create($year, 1, 1)->startOfDay();
+            $endDate = Carbon::create($year, 12, 31)->endOfDay();
+
+            return [$startDate, $endDate, 'Year ' . $year];
+        }
+
+        if ($reportType === 'month') {
+            $startDate = Carbon::create($year, $month, 1)->startOfDay();
+            $endDate = Carbon::create($year, $month, 1)->endOfMonth()->endOfDay();
+
+            return [$startDate, $endDate, $startDate->format('F Y')];
+        }
+
+        if ($reportType === 'week') {
+            $startDate = $weekStartDate->copy()->startOfDay();
+            $endDate = $weekStartDate->copy()->addDays(6)->endOfDay();
+
+            return [$startDate, $endDate, 'Week of ' . $startDate->format('M j, Y') . ' - ' . $endDate->format('M j, Y')];
+        }
+
+        $startMonth = $semester === 1 ? 1 : 7;
+        $endMonth = $semester === 1 ? 6 : 12;
+        $startDate = Carbon::create($year, $startMonth, 1)->startOfDay();
+        $endDate = Carbon::create($year, $endMonth, 1)->endOfMonth()->endOfDay();
+
+        return [$startDate, $endDate, 'Semester ' . $semester . ' (' . $startDate->format('M') . ' - ' . $endDate->format('M Y') . ')'];
     }
 
     public function store(Request $request)

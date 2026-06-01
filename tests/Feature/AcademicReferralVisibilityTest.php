@@ -46,6 +46,68 @@ class AcademicReferralVisibilityTest extends TestCase
             ->assertSee($otherReferral->student_name);
     }
 
+    public function test_academic_report_filters_by_week_month_semester_and_year(): void
+    {
+        [$yearLeader] = $this->createYearLeaders();
+
+        $juneReferral = $this->createReferral($yearLeader, 'June Report Student');
+        $juneReferral->forceFill(['created_at' => '2026-06-01 10:00:00'])->save();
+
+        $augustReferral = $this->createReferral($yearLeader, 'August Report Student');
+        $augustReferral->forceFill(['created_at' => '2026-08-15 10:00:00'])->save();
+
+        $priorYearReferral = $this->createReferral($yearLeader, 'Prior Year Student');
+        $priorYearReferral->forceFill(['created_at' => '2025-06-01 10:00:00'])->save();
+
+        $this->actingAs($yearLeader)
+            ->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'week',
+                'week_start_date' => '2026-06-01',
+            ]))
+            ->assertOk()
+            ->assertSee('Week of Jun 1, 2026 - Jun 7, 2026')
+            ->assertSee($juneReferral->student_name)
+            ->assertDontSee($augustReferral->student_name)
+            ->assertDontSee($priorYearReferral->student_name);
+
+        $this->actingAs($yearLeader)
+            ->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'month',
+                'year' => 2026,
+                'month' => 8,
+            ]))
+            ->assertOk()
+            ->assertSee('August 2026')
+            ->assertSee($augustReferral->student_name)
+            ->assertDontSee($juneReferral->student_name);
+
+        $this->actingAs($yearLeader)
+            ->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'semester',
+                'year' => 2026,
+                'semester' => 1,
+            ]))
+            ->assertOk()
+            ->assertSee('Semester 1 (Jan - Jun 2026)')
+            ->assertSee($juneReferral->student_name)
+            ->assertDontSee($augustReferral->student_name);
+
+        $this->actingAs($yearLeader)
+            ->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'year',
+                'year' => 2026,
+            ]))
+            ->assertOk()
+            ->assertSee('Year 2026')
+            ->assertSee($juneReferral->student_name)
+            ->assertSee($augustReferral->student_name)
+            ->assertDontSee($priorYearReferral->student_name);
+    }
+
     public function test_yearleader_cannot_comment_on_another_yearleaders_referral(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();

@@ -193,6 +193,13 @@
             gap: 1rem;
             margin-bottom: 1rem;
         }
+        .report-filter-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
         .form-label {
             font-size: 0.75rem;
             font-weight: 600;
@@ -398,7 +405,7 @@
                 <div class="report-actions">
                     <div class="report-period-chip">
                         <span>Selected Period</span>
-                        <strong>{{ $reportType === 'general' ? 'All Records' : ucfirst($reportType) }} - {{ $year }}</strong>
+                        <strong>{{ $reportLabel }}</strong>
                     </div>
                     <a href="{{ route('academic.referrals') }}" class="btn btn-light btn-custom">
                         <i class="fas fa-times"></i> Done
@@ -419,7 +426,7 @@
                     </button>
                 </div>
 
-                <form method="GET" action="{{ route('academic.referrals.report') }}" class="report-filter-card report-generator-card hidden" id="academic-report-filter-form">
+                <form method="GET" action="{{ route('academic.referrals.report') }}" class="report-filter-card report-generator-card {{ request()->boolean('report_generated') ? '' : 'hidden' }}" id="academic-report-filter-form">
                     <input type="hidden" name="report_generated" value="1">
                     <input type="hidden" name="type" id="report-type-input" value="{{ $reportType }}">
 
@@ -427,16 +434,46 @@
 
                     <div class="report-type-menu-grid" role="menu" aria-label="Report types">
                         <button type="button" class="report-type-menu-button {{ $reportType === 'general' ? 'is-active' : '' }}" data-report-type="general">General Report</button>
+                        <button type="button" class="report-type-menu-button {{ $reportType === 'week' ? 'is-active' : '' }}" data-report-type="week">Weekly Report</button>
+                        <button type="button" class="report-type-menu-button {{ $reportType === 'month' ? 'is-active' : '' }}" data-report-type="month">Monthly Report</button>
+                        <button type="button" class="report-type-menu-button {{ $reportType === 'semester' ? 'is-active' : '' }}" data-report-type="semester">Semester Report</button>
                         <button type="button" class="report-type-menu-button {{ $reportType === 'year' ? 'is-active' : '' }}" data-report-type="year">Yearly Report</button>
-                        <button type="button" class="report-type-menu-button {{ $reportType === 'priority' ? 'is-active' : '' }}" data-report-type="priority">Priority Report</button>
-                        <button type="button" class="report-type-menu-button {{ $reportType === 'status' ? 'is-active' : '' }}" data-report-type="status">Status Report</button>
                     </div>
 
                     <div class="report-filter-grid">
-                        <div>
+                        <div data-report-field="year">
                             <label class="form-label">Year</label>
                             <input type="number" name="year" class="form-control" min="2000" max="2100" value="{{ $year }}" required>
                         </div>
+                        <div data-report-field="month">
+                            <label class="form-label">Month</label>
+                            <select name="month" class="form-select">
+                                @for ($reportMonth = 1; $reportMonth <= 12; $reportMonth++)
+                                    <option value="{{ $reportMonth }}" @selected($month === $reportMonth)>{{ \Carbon\Carbon::create()->month($reportMonth)->format('F') }}</option>
+                                @endfor
+                            </select>
+                        </div>
+                        <div data-report-field="week">
+                            <label class="form-label">Week Start Date</label>
+                            <input type="date" name="week_start_date" class="form-control" value="{{ $weekStartDate->toDateString() }}" required>
+                        </div>
+                        <div data-report-field="week">
+                            <label class="form-label">Week End Date</label>
+                            <input type="date" class="form-control" value="{{ $endDate->toDateString() }}" readonly>
+                        </div>
+                        <div data-report-field="semester">
+                            <label class="form-label">Semester</label>
+                            <select name="semester" class="form-select">
+                                <option value="1" @selected($semester === 1)>Semester 1</option>
+                                <option value="2" @selected($semester === 2)>Semester 2</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="report-filter-actions">
+                        <button type="submit" class="btn btn-success btn-custom">
+                            <i class="fas fa-chart-line"></i> Generate Selected Report
+                        </button>
                     </div>
 
                     <div class="report-generator-reset">
@@ -533,7 +570,7 @@
 
             @if ($monthlyData->isNotEmpty())
             <div class="report-section">
-                <h4 class="report-section-title"><i class="fas fa-calendar-alt"></i> Monthly Trend</h4>
+                <h4 class="report-section-title"><i class="fas fa-calendar-alt"></i> {{ $trendTitle }}</h4>
                 <table class="report-table">
                     <thead>
                         <tr>
@@ -598,6 +635,31 @@
             const menuButtons = document.querySelectorAll('.report-type-menu-button');
             const form = document.getElementById('academic-report-filter-form');
             const typeInput = document.getElementById('report-type-input');
+            const showGeneratorButton = document.getElementById('show-report-generator');
+            const reportFields = document.querySelectorAll('[data-report-field]');
+
+            const syncReportFields = () => {
+                const activeType = typeInput ? typeInput.value : 'general';
+
+                reportFields.forEach(field => {
+                    const fieldType = field.dataset.reportField;
+                    const shouldShow = activeType !== 'general' && (
+                        fieldType === 'year'
+                        || fieldType === activeType
+                        || (activeType === 'month' && fieldType === 'month')
+                        || (activeType === 'semester' && fieldType === 'semester')
+                        || (activeType === 'week' && fieldType === 'week')
+                    );
+
+                    field.classList.toggle('hidden', !shouldShow);
+                });
+            };
+
+            if (showGeneratorButton && form) {
+                showGeneratorButton.addEventListener('click', function() {
+                    form.classList.toggle('hidden');
+                });
+            }
 
             menuButtons.forEach(button => {
                 button.addEventListener('click', function() {
@@ -606,8 +668,11 @@
                     if (typeInput) {
                         typeInput.value = this.dataset.reportType;
                     }
+                    syncReportFields();
                 });
             });
+
+            syncReportFields();
         });
     </script>
 </body>
