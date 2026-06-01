@@ -44,6 +44,22 @@ class AcademicReferralVisibilityTest extends TestCase
             ->assertDontSee($referral->student_name);
     }
 
+    public function test_weekly_report_end_date_defaults_to_start_date_plus_six_days(): void
+    {
+        [$yearLeader] = $this->createYearLeaders();
+
+        $response = $this->actingAs($yearLeader)->get(route('academic.referrals.report', [
+            'type' => 'week',
+            'week_start_date' => '2026-06-01',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('value="2026-06-01"', false)
+            ->assertSee('value="2026-06-07"', false)
+            ->assertDontSee('value="2100-12-31"', false);
+    }
+
     public function test_yearleader_generated_report_contains_all_referred_students(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();

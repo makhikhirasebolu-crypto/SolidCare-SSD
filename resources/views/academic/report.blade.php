@@ -455,11 +455,11 @@
                         </div>
                         <div data-report-field="week">
                             <label class="form-label">Week Start Date</label>
-                            <input type="date" name="week_start_date" class="form-control" value="{{ $weekStartDate->toDateString() }}" required>
+                            <input type="date" name="week_start_date" id="week-start-date" class="form-control" value="{{ $weekStartDate->toDateString() }}" required>
                         </div>
                         <div data-report-field="week">
                             <label class="form-label">Week End Date</label>
-                            <input type="date" class="form-control" value="{{ $endDate->toDateString() }}" readonly>
+                            <input type="date" id="week-end-date" class="form-control" value="{{ $weekEndDate->toDateString() }}" readonly>
                         </div>
                         <div data-report-field="semester">
                             <label class="form-label">Semester</label>
@@ -639,6 +639,25 @@
             const typeInput = document.getElementById('report-type-input');
             const showGeneratorButton = document.getElementById('show-report-generator');
             const reportFields = document.querySelectorAll('[data-report-field]');
+            const weekStartDateInput = document.getElementById('week-start-date');
+            const weekEndDateInput = document.getElementById('week-end-date');
+
+            const syncWeekEndDate = () => {
+                if (!weekStartDateInput || !weekEndDateInput || !weekStartDateInput.value) {
+                    return;
+                }
+
+                const weekStartDate = new Date(`${weekStartDateInput.value}T00:00:00`);
+                if (Number.isNaN(weekStartDate.getTime())) {
+                    return;
+                }
+
+                weekStartDate.setDate(weekStartDate.getDate() + 6);
+                const year = weekStartDate.getFullYear();
+                const month = String(weekStartDate.getMonth() + 1).padStart(2, '0');
+                const day = String(weekStartDate.getDate()).padStart(2, '0');
+                weekEndDateInput.value = `${year}-${month}-${day}`;
+            };
 
             const syncReportFields = () => {
                 const activeType = typeInput ? typeInput.value : 'general';
@@ -655,6 +674,10 @@
 
                     field.classList.toggle('hidden', !shouldShow);
                 });
+
+                if (activeType === 'week') {
+                    syncWeekEndDate();
+                }
             };
 
             if (showGeneratorButton && form) {
@@ -673,6 +696,10 @@
                     syncReportFields();
                 });
             });
+
+            if (weekStartDateInput) {
+                weekStartDateInput.addEventListener('change', syncWeekEndDate);
+            }
 
             syncReportFields();
         });

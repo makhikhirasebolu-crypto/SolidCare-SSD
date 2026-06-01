@@ -214,6 +214,7 @@ class AcademicReferralController extends Controller
             $semester,
             $weekStartDate
         );
+        $weekEndDate = $weekStartDate->copy()->addDays(6)->endOfDay();
 
         $referralQuery = $this->referralQueryForUser($user);
 
@@ -271,7 +272,7 @@ class AcademicReferralController extends Controller
         ];
 
         return view('academic.report', compact(
-            'referrals', 'reportGenerated', 'reportType', 'year', 'month', 'semester', 'weekStartDate', 'endDate', 'reportLabel', 'trendTitle',
+            'referrals', 'reportGenerated', 'reportType', 'year', 'month', 'semester', 'weekStartDate', 'weekEndDate', 'endDate', 'reportLabel', 'trendTitle',
             'totalReferrals', 'pendingReferrals', 'reviewedReferrals', 'resolvedReferrals',
             'criticalPriority', 'urgentPriority', 'normalPriority',
             'monthlyData', 'referrerData', 'priorityData', 'statusData',
