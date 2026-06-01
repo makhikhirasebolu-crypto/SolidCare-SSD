@@ -656,6 +656,173 @@
             white-space: pre-wrap;
         }
 
+        .paper-feedback-form {
+            background: #fff;
+            color: #1f2937;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 1.2rem;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .paper-feedback-form .paper-code {
+            text-align: right;
+            color: #6b7280;
+            font-size: 0.7rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .paper-logo {
+            width: 180px;
+            margin: 0 auto 0.7rem;
+            padding: 0.4rem 0.6rem;
+            text-align: center;
+            border: 1px solid #9ca3af;
+            background: #4b5563;
+            color: #fff;
+            line-height: 1;
+            text-transform: uppercase;
+            font-weight: 800;
+        }
+
+        .paper-logo span {
+            display: block;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            margin-top: 0.15rem;
+        }
+
+        .paper-title {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .paper-title strong {
+            display: inline-block;
+            background: #6b7280;
+            color: #fff;
+            padding: 0.18rem 0.55rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            margin-top: 0.2rem;
+            max-width: 100%;
+        }
+
+        .paper-section-label {
+            font-weight: 700;
+            font-size: 0.78rem;
+            color: #374151;
+            margin: 1rem 0 0.35rem;
+        }
+
+        .paper-row {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 0.45rem 0.75rem;
+            align-items: end;
+            margin-bottom: 0.55rem;
+        }
+
+        .paper-field {
+            grid-column: span 4;
+            display: flex;
+            align-items: end;
+            gap: 0.35rem;
+            min-width: 0;
+        }
+
+        .paper-field.small { grid-column: span 3; }
+        .paper-field.tiny { grid-column: span 2; }
+        .paper-field.wide { grid-column: span 6; }
+        .paper-field.full { grid-column: 1 / -1; }
+
+        .paper-field label {
+            flex: 0 0 auto;
+            margin: 0;
+            color: #374151;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: none;
+            letter-spacing: 0;
+            white-space: nowrap;
+        }
+
+        .paper-feedback-form .form-control {
+            border: 0;
+            border-bottom: 1px solid #9ca3af;
+            border-radius: 0;
+            padding: 0.18rem 0.25rem;
+            min-height: 1.65rem;
+            background: transparent;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 0.82rem;
+            box-shadow: none;
+        }
+
+        .paper-feedback-form textarea.form-control {
+            line-height: 1.75rem;
+            background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 1.65rem, #9ca3af 1.68rem);
+            background-size: 100% 1.75rem;
+            border-bottom: 0;
+            resize: vertical;
+        }
+
+        .paper-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.35rem;
+            font-size: 0.78rem;
+        }
+
+        .paper-table th,
+        .paper-table td {
+            border: 1px solid #cbd5e1;
+            padding: 0.35rem;
+            vertical-align: top;
+        }
+
+        .paper-table th {
+            text-align: left;
+            background: #f8fafc;
+            color: #374151;
+            font-weight: 700;
+        }
+
+        .paper-table textarea.form-control {
+            min-height: 9rem;
+            border: 0;
+        }
+
+        @media (max-width: 768px) {
+            .paper-feedback-form {
+                padding: 0.85rem;
+            }
+
+            .paper-row {
+                grid-template-columns: 1fr;
+            }
+
+            .paper-field,
+            .paper-field.small,
+            .paper-field.tiny,
+            .paper-field.wide,
+            .paper-field.full {
+                grid-column: 1 / -1;
+            }
+
+            .paper-field {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 0.15rem;
+            }
+
+            .paper-field label {
+                white-space: normal;
+            }
+        }
+
         .conv {
             margin-top: 1rem;
         }
@@ -1395,6 +1562,7 @@
                             $derivedContactNumber = $referralForm['contact_number'] ?? ($studentProfile['contact_number'] ?? '');
                             $derivedYearLeaderName = $referralForm['year_leader_name'] ?? optional($referral->referrer)->name;
                             $derivedPrincipalLecturer = $referralForm['principal_lecturer'] ?? '';
+                            $derivedFmg = $referralForm['fmg'] ?? '';
                             $derivedFieldOfStudy = $referralForm['field_of_study'] ?? $derivedProgramme;
                             $derivedSemester = $referralForm['semester'] ?? $derivedYearOfStudy;
                             $defaultFirstName = $attendanceForm['student_first_name'] ?? ($referralForm['student_first_name'] ?? ($nameParts[0] ?? ''));
@@ -1578,108 +1746,127 @@
                                         @csrf
                                         <input type="hidden" name="form_referral_id" value="{{ $referral->id }}">
 
-                                        <div class="sheet-grid">
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">First Name</label>
-                                                <input type="text" name="student_first_name" class="form-control" value="{{ $attendanceValue('student_first_name', $defaultFirstName) }}" required>
+                                        <div class="paper-feedback-form">
+                                            <div class="paper-code">LUCT Lesotho SSD/FF 1</div>
+                                            <div class="paper-logo">
+                                                Limkokwing University
+                                                <span>of Creative Technology</span>
+                                                <span>Lesotho</span>
                                             </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Surname</label>
-                                                <input type="text" name="student_surname" class="form-control" value="{{ $attendanceValue('student_surname', $defaultSurname) }}">
+                                            <div class="paper-title">
+                                                <strong>Limkokwing University of Creative Technology, Lesotho</strong>
+                                                <strong>LUCT Student's Referral Feedback Form from the Student Services Department</strong>
                                             </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Class</label>
-                                                <input type="text" name="class_name" class="form-control" value="{{ $attendanceValue('class_name', $derivedClassName) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Programme</label>
-                                                <input type="text" name="programme" class="form-control" value="{{ $attendanceValue('programme', $derivedProgramme) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Sex</label>
-                                                <input type="text" name="sex" class="form-control" value="{{ $attendanceValue('sex', $referralForm['sex'] ?? '') }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Student Identity Number</label>
-                                                <input type="text" name="student_identity_number" class="form-control" value="{{ $attendanceValue('student_identity_number', $referralForm['student_identity_number'] ?? $referral->student_id) }}" required>
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Faculty</label>
-                                                <input type="text" name="faculty" class="form-control" value="{{ $attendanceValue('faculty', $derivedFaculty) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Year Leader</label>
-                                                <input type="text" name="year_leader_name" class="form-control" value="{{ $attendanceValue('year_leader_name', $derivedYearLeaderName) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Principal Lecturer</label>
-                                                <input type="text" name="principal_lecturer" class="form-control" value="{{ $attendanceValue('principal_lecturer', $derivedPrincipalLecturer) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Field of Study</label>
-                                                <input type="text" name="field_of_study" class="form-control" value="{{ $attendanceValue('field_of_study', $derivedFieldOfStudy) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Semester</label>
-                                                <input type="text" name="semester" class="form-control" value="{{ $attendanceValue('semester', $derivedSemester) }}">
-                                            </div>
-                                            <div class="sheet-field">
-                                                <label class="sheet-label">Contact No.</label>
-                                                <input type="text" name="contact_number" class="form-control" value="{{ $attendanceValue('contact_number', $derivedContactNumber) }}">
-                                            </div>
-                                        </div>
 
-                                        <div class="sheet-section">
-                                            <div class="sheet-grid">
-                                                <div class="sheet-field full">
-                                                    <label class="sheet-label">Feedback</label>
-                                                    <textarea name="feedback" rows="4" class="form-control" required>{{ $attendanceValue('feedback') }}</textarea>
+                                            <div class="paper-section-label">Individual Student:</div>
+                                            <div class="paper-row">
+                                                <div class="paper-field">
+                                                    <label>Student Details: First Name</label>
+                                                    <input type="text" name="student_first_name" class="form-control" value="{{ $attendanceValue('student_first_name', $defaultFirstName) }}" required>
+                                                </div>
+                                                <div class="paper-field">
+                                                    <label>Surname</label>
+                                                    <input type="text" name="student_surname" class="form-control" value="{{ $attendanceValue('student_surname', $defaultSurname) }}">
+                                                </div>
+                                                <div class="paper-field small">
+                                                    <label>Sex</label>
+                                                    <input type="text" name="sex" class="form-control" value="{{ $attendanceValue('sex', $referralForm['sex'] ?? '') }}">
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div class="sheet-section">
-                                            <div class="sheet-grid">
-                                                <div class="sheet-field full">
-                                                    <label class="sheet-label">Group Problems</label>
-                                                    <textarea name="group_problems" rows="3" class="form-control">{{ $attendanceValue('group_problems') }}</textarea>
+                                            <div class="paper-row">
+                                                <div class="paper-field wide">
+                                                    <label>Student Identity Number</label>
+                                                    <input type="text" name="student_identity_number" class="form-control" value="{{ $attendanceValue('student_identity_number', $referralForm['student_identity_number'] ?? $referral->student_id) }}" required>
                                                 </div>
-                                                <div class="sheet-field full">
-                                                    <label class="sheet-label">Group of Students / Feedback as Obtained</label>
-                                                    <textarea name="group_students_feedback" rows="4" class="form-control" placeholder="List names and feedback, one line per student.">{{ $attendanceValue('group_students_feedback') }}</textarea>
+                                                <div class="paper-field small">
+                                                    <label>Class</label>
+                                                    <input type="text" name="class_name" class="form-control" value="{{ $attendanceValue('class_name', $derivedClassName) }}">
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="sheet-section">
-                                            <div class="sheet-grid">
-                                                <div class="sheet-field full">
-                                                    <label class="sheet-label">Action Taken</label>
-                                                    <textarea name="action_taken" rows="3" class="form-control" required>{{ $attendanceValue('action_taken') }}</textarea>
-                                                </div>
-                                                <div class="sheet-field full">
-                                                    <label class="sheet-label">Plan of Action</label>
-                                                    <textarea name="plan_of_action" rows="3" class="form-control">{{ $attendanceValue('plan_of_action') }}</textarea>
+                                                <div class="paper-field small">
+                                                    <label>Programme</label>
+                                                    <input type="text" name="programme" class="form-control" value="{{ $attendanceValue('programme', $derivedProgramme) }}">
                                                 </div>
                                             </div>
-                                        </div>
+                                            <div class="paper-row">
+                                                <div class="paper-field">
+                                                    <label>Faculty</label>
+                                                    <input type="text" name="faculty" class="form-control" value="{{ $attendanceValue('faculty', $derivedFaculty) }}">
+                                                </div>
+                                                <div class="paper-field tiny">
+                                                    <label>Year of Study</label>
+                                                    <input type="text" name="year_of_study" class="form-control" value="{{ $attendanceValue('year_of_study', $derivedYearOfStudy) }}">
+                                                </div>
+                                                <div class="paper-field tiny">
+                                                    <label>Semester</label>
+                                                    <input type="text" name="semester" class="form-control" value="{{ $attendanceValue('semester', $derivedSemester) }}">
+                                                </div>
+                                                <div class="paper-field">
+                                                    <label>Contact Number</label>
+                                                    <input type="text" name="contact_number" class="form-control" value="{{ $attendanceValue('contact_number', $derivedContactNumber) }}">
+                                                </div>
+                                            </div>
+                                            <div class="paper-row">
+                                                <div class="paper-field">
+                                                    <label>Year Leader</label>
+                                                    <input type="text" name="year_leader_name" class="form-control" value="{{ $attendanceValue('year_leader_name', $derivedYearLeaderName) }}">
+                                                </div>
+                                                <div class="paper-field">
+                                                    <label>Principal Lecturer</label>
+                                                    <input type="text" name="principal_lecturer" class="form-control" value="{{ $attendanceValue('principal_lecturer', $derivedPrincipalLecturer) }}">
+                                                </div>
+                                                <div class="paper-field">
+                                                    <label>FMG</label>
+                                                    <input type="text" name="fmg" class="form-control" value="{{ $attendanceValue('fmg', $derivedFmg) }}">
+                                                    <input type="hidden" name="field_of_study" value="{{ $attendanceValue('field_of_study', $derivedFieldOfStudy) }}">
+                                                </div>
+                                            </div>
 
-                                        <div class="sheet-section">
-                                            <div class="sheet-grid cols-4">
-                                                <div class="sheet-field">
-                                                    <label class="sheet-label">SSD Officer's Name</label>
+                                            <div class="paper-section-label">Feedback</div>
+                                            <textarea name="feedback" rows="6" class="form-control" required>{{ $attendanceValue('feedback') }}</textarea>
+
+                                            <div class="paper-section-label">Group of Students</div>
+                                            <div class="paper-field full">
+                                                <label>Group's Details</label>
+                                                <input type="text" name="group_problems" class="form-control" value="{{ $attendanceValue('group_problems') }}">
+                                            </div>
+                                            <table class="paper-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width:22%;">First Name</th>
+                                                        <th style="width:22%;">Surname</th>
+                                                        <th>Feedback as obtained from the student</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td colspan="3">
+                                                            <textarea name="group_students_feedback" rows="5" class="form-control" placeholder="List each student and feedback, one line per student.">{{ $attendanceValue('group_students_feedback') }}</textarea>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            <div class="paper-section-label">Action Taken</div>
+                                            <textarea name="action_taken" rows="3" class="form-control" required>{{ $attendanceValue('action_taken') }}</textarea>
+
+                                            <div class="paper-section-label">Plan of Action</div>
+                                            <textarea name="plan_of_action" rows="3" class="form-control">{{ $attendanceValue('plan_of_action') }}</textarea>
+
+                                            <div class="paper-row" style="margin-top: 1rem;">
+                                                <div class="paper-field wide">
+                                                    <label>SSD Officer's Name</label>
                                                     <input type="text" name="ssd_officer_name" class="form-control" value="{{ $attendanceValue('ssd_officer_name', $defaultOfficerName) }}" required>
                                                 </div>
-                                                <div class="sheet-field">
-                                                    <label class="sheet-label">Designation</label>
+                                                <div class="paper-field tiny">
+                                                    <label>Designation</label>
                                                     <input type="text" name="designation" class="form-control" value="{{ $attendanceValue('designation', $defaultDesignation) }}">
                                                 </div>
-                                                <div class="sheet-field">
-                                                    <label class="sheet-label">Date</label>
+                                                <div class="paper-field tiny">
+                                                    <label>Date</label>
                                                     <input type="date" name="attended_on" class="form-control" value="{{ $attendanceValue('attended_on', $defaultAttendanceDate) }}" required>
                                                 </div>
-                                                <div class="sheet-field">
-                                                    <label class="sheet-label">Signature</label>
+                                                <div class="paper-field tiny">
+                                                    <label>Signature</label>
                                                     <input type="text" name="signature_name" class="form-control" value="{{ $attendanceValue('signature_name') }}">
                                                 </div>
                                             </div>
@@ -1701,7 +1888,8 @@
                                         <div class="sheet-read"><strong>Faculty</strong><span>{{ $attendanceForm['faculty'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Year Leader</strong><span>{{ $attendanceForm['year_leader_name'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Principal Lecturer</strong><span>{{ $attendanceForm['principal_lecturer'] ?? 'Not recorded' }}</span></div>
-                                        <div class="sheet-read"><strong>Field of Study</strong><span>{{ $attendanceForm['field_of_study'] ?? 'Not recorded' }}</span></div>
+                                        <div class="sheet-read"><strong>FMG</strong><span>{{ $attendanceForm['fmg'] ?? 'Not recorded' }}</span></div>
+                                        <div class="sheet-read"><strong>Year of Study</strong><span>{{ $attendanceForm['year_of_study'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Semester</strong><span>{{ $attendanceForm['semester'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Contact No.</strong><span>{{ $attendanceForm['contact_number'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>SSD Officer's Name</strong><span>{{ $attendanceForm['ssd_officer_name'] ?? 'Not recorded' }}</span></div>
