@@ -445,7 +445,7 @@
             <div class="report-topbar">
                 <div class="report-brand">
                     <span class="report-brand-mark">SC</span>
-                    <span>SolidCare SSD Admin</span>
+                    <span>SolidCare SSD</span>
                 </div>
                 <span>{{ now()->format('M j, Y') }}</span>
             </div>
