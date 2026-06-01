@@ -3400,45 +3400,49 @@ class AuthController extends Controller
 
     protected function availableAccommodationReportIntakes()
     {
-        $recentIntakes = AccommodationApplication::query()
+        $recentApplications = AccommodationApplication::query()
             ->whereNotNull('intake')
             ->latest('updated_at')
             ->latest('id')
-            ->pluck('intake')
-            ->map(fn ($intake) => is_string($intake) ? trim($intake) : '')
-            ->filter()
-            ->unique()
+            ->get()
             ->values();
 
-        $currentIntake = $recentIntakes->first();
+        $currentApplication = $recentApplications
+            ->first(fn (AccommodationApplication $application) => filled(trim((string) $application->intake)));
 
-        if (! $currentIntake) {
+        if (! $currentApplication) {
             return collect();
         }
 
-        $currentIntakeYear = $this->extractAccommodationIntakeYear($currentIntake) ?? now()->year;
+        $currentIntakeYear = $this->accommodationApplicationReportYear($currentApplication) ?? now()->year;
 
-        return $recentIntakes
-            ->filter(function (string $intake) use ($currentIntake, $currentIntakeYear) {
-                if ($intake === $currentIntake) {
+        return $recentApplications
+            ->filter(function (AccommodationApplication $application) use ($currentApplication, $currentIntakeYear) {
+                if ($application->is($currentApplication)) {
                     return true;
                 }
 
-                $intakeYear = $this->extractAccommodationIntakeYear($intake);
+                $intakeYear = $this->accommodationApplicationReportYear($application);
 
                 return $intakeYear !== null
                     && $intakeYear >= ($currentIntakeYear - 3)
                     && $intakeYear <= $currentIntakeYear;
             })
+            ->map(fn (AccommodationApplication $application) => trim((string) $application->intake))
+            ->filter()
+            ->unique()
             ->values();
     }
 
     protected function availableAccommodationReportYears($availableIntakes = null)
     {
-        $availableIntakes = $availableIntakes ?? $this->availableAccommodationReportIntakes();
-
-        return $availableIntakes
-            ->map(fn (string $intake) => $this->extractAccommodationIntakeYear($intake))
+        return AccommodationApplication::query()
+            ->whereNotNull('intake')
+            ->latest('updated_at')
+            ->latest('id')
+            ->get()
+            ->filter(fn (AccommodationApplication $application) => filled(trim((string) $application->intake)))
+            ->map(fn (AccommodationApplication $application) => $this->accommodationApplicationReportYear($application))
             ->filter()
             ->unique()
             ->values();
@@ -3473,6 +3477,13 @@ class AuthController extends Controller
         return (int) $matches[1];
     }
 
+    protected function accommodationApplicationReportYear(AccommodationApplication $application): ?int
+    {
+        return $this->extractAccommodationIntakeYear($application->intake)
+            ?? $application->check_in_date?->year
+            ?? $application->created_at?->year;
+    }
+
     protected function buildAccommodationReportData(?string $requestedIntake = null, ?string $requestedYear = null): array
     {
         $allAvailableIntakes = $this->availableAccommodationReportIntakes();
@@ -3480,8 +3491,15 @@ class AuthController extends Controller
         $selectedYear = $this->resolveAccommodationReportYear($requestedYear, $availableYears);
 
         $availableIntakes = $selectedYear
-            ? $allAvailableIntakes
-                ->filter(fn (string $intake) => $this->extractAccommodationIntakeYear($intake) === $selectedYear)
+            ? AccommodationApplication::query()
+                ->whereNotNull('intake')
+                ->latest('updated_at')
+                ->latest('id')
+                ->get()
+                ->filter(fn (AccommodationApplication $application) => $this->accommodationApplicationReportYear($application) === $selectedYear)
+                ->map(fn (AccommodationApplication $application) => trim((string) $application->intake))
+                ->filter()
+                ->unique()
                 ->values()
             : collect();
 
@@ -3497,10 +3515,12 @@ class AuthController extends Controller
             'reallocationApprovedBy',
                 'roomReallocatedBy',
             ])
-                ->whereIn('intake', $availableIntakes->all())
+                ->whereNotNull('intake')
                 ->latest('updated_at')
                 ->latest('id')
                 ->get()
+                ->filter(fn (AccommodationApplication $application) => $this->accommodationApplicationReportYear($application) === $selectedYear)
+                ->values()
             : collect();
 
         $intakeOccupancyByRoom = $applications
