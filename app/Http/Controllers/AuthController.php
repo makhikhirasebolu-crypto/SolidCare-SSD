@@ -202,8 +202,7 @@ class AuthController extends Controller
                 'required_if:student_type,continuing',
                 'nullable',
                 'string',
-                'max:100',
-                'regex:/^901\d+$/',
+                'regex:/^901\d{6}$/',
                 function (string $attribute, mixed $value, \Closure $fail) {
                     if ($this->studentIdAlreadyRegistered($value)) {
                         $fail('This student number is already registered.');
@@ -214,7 +213,7 @@ class AuthController extends Controller
                 'required_if:student_type,new',
                 'nullable',
                 'string',
-                'max:100',
+                'regex:/^\d{13}$/',
                 function (string $attribute, mixed $value, \Closure $fail) {
                     if ($this->nationalIdAlreadyRegistered($value)) {
                         $fail('This national ID is already registered.');
@@ -226,7 +225,8 @@ class AuthController extends Controller
         ];
 
         $data = $request->validate($rules, [
-            'student_id.regex' => 'Student number must start with 901 and contain digits only.',
+            'student_id.regex' => 'Student number must start with 901 and be exactly 9 digits.',
+            'id_number.regex' => 'National ID must contain exactly 13 digits.',
         ]);
 
         $user = User::create([

@@ -246,12 +246,12 @@
 
             <div id="student_id_field" style="display:none;">
                 <label>Student ID (if continuing)</label>
-                <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}" inputmode="numeric" pattern="901[0-9]+" title="Student number must start with 901 and contain digits only.">
+                <input type="text" name="student_id" placeholder="901xxxxxx" value="{{ old('student_id') }}" inputmode="numeric" pattern="901[0-9]{6}" minlength="9" maxlength="9" title="Student number must start with 901 and be exactly 9 digits.">
             </div>
 
             <div id="id_number_field" style="display:none;">
                 <label>National ID (if new)</label>
-                <input type="text" name="id_number" placeholder="Identity Number" value="{{ old('id_number') }}">
+                <input type="text" name="id_number" placeholder="13-digit National ID" value="{{ old('id_number') }}" inputmode="numeric" pattern="[0-9]{13}" minlength="13" maxlength="13" title="National ID must contain exactly 13 digits.">
             </div>
         </div>
 

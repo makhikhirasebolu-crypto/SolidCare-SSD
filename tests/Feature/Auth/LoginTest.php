@@ -627,6 +627,28 @@ class LoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_continuing_student_number_must_be_exactly_9_digits(): void
+    {
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'Another Student',
+            'email' => 'another.student@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'continuing',
+            'student_id' => '9010156871',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors([
+            'student_id' => 'Student number must start with 901 and be exactly 9 digits.',
+        ]);
+
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('students', 0);
+        $this->assertGuest();
+    }
+
     public function test_student_can_verify_email_even_if_another_student_session_is_active(): void
     {
         $activeUser = User::create([
@@ -724,14 +746,14 @@ class LoginTest extends TestCase
             'password' => 'password123',
             'role' => 'student',
             'student_type' => 'new',
-            'id_number' => 'A12345678',
+            'id_number' => '1234567890123',
             'disability' => 'no',
         ]);
 
         \App\Models\Student::create([
             'user_id' => $existingUser->id,
             'student_type' => 'new',
-            'id_number' => 'A12345678',
+            'id_number' => '1234567890123',
             'disability' => 'no',
         ]);
 
@@ -741,7 +763,7 @@ class LoginTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'student_type' => 'new',
-            'id_number' => '  a12345678  ',
+            'id_number' => '  1234567890123  ',
             'disability' => 'no',
         ]);
 
@@ -752,6 +774,28 @@ class LoginTest extends TestCase
 
         $this->assertDatabaseCount('users', 1);
         $this->assertDatabaseCount('students', 1);
+        $this->assertGuest();
+    }
+
+    public function test_new_student_national_id_must_be_13_digits(): void
+    {
+        $response = $this->from(route('register'))->post('/register', [
+            'name' => 'New Student',
+            'email' => 'new.student@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'student_type' => 'new',
+            'id_number' => '12345ABC90123',
+            'disability' => 'no',
+        ]);
+
+        $response->assertRedirect(route('register'));
+        $response->assertSessionHasErrors([
+            'id_number' => 'National ID must contain exactly 13 digits.',
+        ]);
+
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('students', 0);
         $this->assertGuest();
     }
 }

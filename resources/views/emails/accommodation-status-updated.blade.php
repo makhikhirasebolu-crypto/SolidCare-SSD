@@ -18,9 +18,7 @@
 
                 <div style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:18px 20px; margin:20px 0;">
                     <p style="margin:0 0 10px;"><strong>Status:</strong> {{ $statusLabel }}</p>
-                    @if ($application->status === 'admitted' && $application->room)
-                        <p style="margin:0 0 10px;"><strong>Allocated Room:</strong> {{ $application->room->block_name }}-{{ str_pad((string) $application->room->room_number, 2, '0', STR_PAD_LEFT) }}</p>
-                    @endif
+                    <p style="margin:0 0 10px;"><strong>Allocated Room:</strong> {{ $application->room ? $application->room->block_name . '-' . str_pad((string) $application->room->room_number, 2, '0', STR_PAD_LEFT) : 'Not allocated' }}</p>
                     @if ($application->status === 'admitted' && $application->check_in_date)
                         <p style="margin:0 0 10px;"><strong>Check-In Date:</strong> {{ $application->check_in_date->format('F j, Y') }}</p>
                     @endif

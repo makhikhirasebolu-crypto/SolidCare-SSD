@@ -1,6 +1,8 @@
 <?php
 
+use App\Mail\AccommodationStatusUpdated;
 use App\Mail\ClinicStockExpiryReminder;
+use App\Models\AccommodationApplication;
 use App\Models\ClinicStockReceipt;
 use App\Models\User;
 use Illuminate\Foundation\Inspiring;
@@ -15,7 +17,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('mail:brevo-test {email : The real email address that should receive the test message}', function (string $email) {
+Artisan::command('mail:brevo-test {email : The real email address that should receive the test message} {--application= : Accommodation application ID to use for the test email}', function (string $email) {
     if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $this->error('Please provide a valid email address.');
 
@@ -26,16 +28,60 @@ Artisan::command('mail:brevo-test {email : The real email address that should re
     $this->info('Host: ' . config('mail.mailers.smtp.host'));
     $this->info('Port: ' . config('mail.mailers.smtp.port'));
     $this->info('Queue: ' . config('queue.default'));
-    $this->info('Sending Brevo SMTP test email to ' . $email . '...');
+    $applicationId = $this->option('application');
+    $application = null;
+
+    if ($applicationId) {
+        $application = AccommodationApplication::with(['room', 'user'])->find($applicationId);
+
+        if (! $application) {
+            $this->error('Accommodation application #' . $applicationId . ' was not found.');
+
+            return 1;
+        }
+    } else {
+        $application = AccommodationApplication::with(['room', 'user'])
+            ->where(function ($query) use ($email) {
+                $query->whereRaw('LOWER(TRIM(email)) = ?', [Str::lower(trim($email))])
+                    ->orWhereHas('user', function ($userQuery) use ($email) {
+                        $userQuery->whereRaw('LOWER(TRIM(email)) = ?', [Str::lower(trim($email))]);
+                    });
+            })
+            ->latest()
+            ->first();
+
+        if (! $application) {
+            $application = AccommodationApplication::with(['room', 'user'])
+                ->where('status', 'admitted')
+                ->whereNotNull('accommodation_room_id')
+                ->latest()
+                ->first();
+        }
+
+        if (! $application) {
+            $application = AccommodationApplication::with(['room', 'user'])
+                ->whereIn('status', ['admitted', 'conditional', 'rejected'])
+                ->latest()
+                ->first();
+        }
+    }
+
+    if (! $application) {
+        $this->error('No accommodation application was found to build the status email.');
+        $this->warn('Create or approve an accommodation application first, or pass --application=ID.');
+
+        return 1;
+    }
+
+    $this->info('Sending accommodation status test email to ' . $email . '...');
+    $this->info('Application: #' . $application->id . ' | ' . $application->full_name . ' | Status: ' . Str::headline($application->status));
 
     try {
-        Mail::raw('This is a test email from SolidCare SSD through Brevo SMTP.', function ($message) use ($email) {
-            $message->to($email)
-                ->subject('SolidCare SSD Brevo Test');
-        });
+        Mail::to($email)->send(new AccommodationStatusUpdated($application));
     } catch (Throwable $e) {
         Log::error('Brevo SMTP test email failed.', [
             'recipient' => $email,
+            'application_id' => $application->id,
             'error' => $e->getMessage(),
         ]);
 
@@ -48,7 +94,7 @@ Artisan::command('mail:brevo-test {email : The real email address that should re
     $this->info('Test email handed off successfully. Check the inbox and spam folder.');
 
     return 0;
-})->purpose('Send a direct Brevo SMTP test email.');
+})->purpose('Send a Brevo SMTP accommodation status test email.');
 
 Artisan::command('students:verification-links {--email= : Show only this student email}', function () {
     $query = User::query()
