@@ -203,7 +203,7 @@ class AcademicReferralController extends Controller
         $year = $year >= 2000 && $year <= 2100 ? $year : (int) now()->year;
         $month = (int) $request->query('month', now()->month);
         $month = $month >= 1 && $month <= 12 ? $month : (int) now()->month;
-        $semester = (int) $request->query('semester', 1);
+        $semester = (int) $request->query('semester', $this->defaultAcademicSemester(now()));
         $semester = in_array($semester, [1, 2], true) ? $semester : 1;
         $weekStartDate = $this->parseReportDate($request->query('week_start_date'), now()->startOfWeek());
         $weekEndDate = $this->parseReportDate(
@@ -299,6 +299,11 @@ class AcademicReferralController extends Controller
         }
     }
 
+    protected function defaultAcademicSemester(Carbon $date): int
+    {
+        return $date->month >= 8 ? 1 : 2;
+    }
+
     protected function resolveAcademicReportRange(
         string $reportType,
         int $year,
@@ -312,10 +317,10 @@ class AcademicReferralController extends Controller
         }
 
         if ($reportType === 'year') {
-            $startDate = Carbon::create($year, 1, 1)->startOfDay();
-            $endDate = Carbon::create($year, 12, 31)->endOfDay();
+            $startDate = Carbon::create($year - 1, 8, 1)->startOfDay();
+            $endDate = Carbon::create($year, 7, 31)->endOfDay();
 
-            return [$startDate, $endDate, 'Year ' . $year];
+            return [$startDate, $endDate, 'Academic Year ' . ($year - 1) . '/' . $year];
         }
 
         if ($reportType === 'month') {
@@ -332,10 +337,12 @@ class AcademicReferralController extends Controller
             return [$startDate, $endDate, 'Week of ' . $startDate->format('M j, Y') . ' - ' . $endDate->format('M j, Y')];
         }
 
-        $startMonth = $semester === 1 ? 1 : 7;
-        $endMonth = $semester === 1 ? 6 : 12;
-        $startDate = Carbon::create($year, $startMonth, 1)->startOfDay();
-        $endDate = Carbon::create($year, $endMonth, 1)->endOfMonth()->endOfDay();
+        $startYear = $semester === 1 ? $year - 1 : $year;
+        $startMonth = $semester === 1 ? 8 : 2;
+        $endYear = $semester === 1 ? $year - 1 : $year;
+        $endMonth = $semester === 1 ? 11 : 5;
+        $startDate = Carbon::create($startYear, $startMonth, 1)->startOfDay();
+        $endDate = Carbon::create($endYear, $endMonth, 1)->endOfMonth()->endOfDay();
 
         return [$startDate, $endDate, 'Semester ' . $semester . ' (' . $startDate->format('M') . ' - ' . $endDate->format('M Y') . ')'];
     }

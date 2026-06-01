@@ -464,8 +464,8 @@
                         <div data-report-field="semester">
                             <label class="form-label">Semester</label>
                             <select name="semester" class="form-select">
-                                <option value="1" @selected($semester === 1)>Semester 1</option>
-                                <option value="2" @selected($semester === 2)>Semester 2</option>
+                                <option value="1" @selected($semester === 1)>Semester 1 (Aug - Nov)</option>
+                                <option value="2" @selected($semester === 2)>Semester 2 (Feb - May)</option>
                             </select>
                         </div>
                     </div>

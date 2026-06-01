@@ -6,6 +6,7 @@ use App\Models\ReferralComment;
 use App\Models\StudentReferral;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class AcademicReferralVisibilityTest extends TestCase
@@ -61,6 +62,27 @@ class AcademicReferralVisibilityTest extends TestCase
             ->assertDontSee('value="2100-12-31"', false);
     }
 
+    public function test_semester_report_defaults_to_second_semester_during_june(): void
+    {
+        Carbon::setTestNow('2026-06-01 10:00:00');
+
+        try {
+            [$yearLeader] = $this->createYearLeaders();
+
+            $response = $this->actingAs($yearLeader)->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'semester',
+            ]));
+
+            $response
+                ->assertOk()
+                ->assertSee('Semester 2 (Feb - May 2026)')
+                ->assertSee('<option value="2" selected>Semester 2 (Feb - May)</option>', false);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_yearleader_generated_report_contains_all_referred_students(): void
     {
         [$yearLeader, $otherYearLeader] = $this->createYearLeaders();
@@ -87,6 +109,12 @@ class AcademicReferralVisibilityTest extends TestCase
 
         $juneReferral = $this->createReferral($yearLeader, 'June Report Student');
         $juneReferral->forceFill(['created_at' => '2026-06-01 10:00:00'])->save();
+
+        $marchReferral = $this->createReferral($yearLeader, 'March Report Student');
+        $marchReferral->forceFill(['created_at' => '2026-03-15 10:00:00'])->save();
+
+        $novemberReferral = $this->createReferral($yearLeader, 'November Report Student');
+        $novemberReferral->forceFill(['created_at' => '2025-11-15 10:00:00'])->save();
 
         $augustReferral = $this->createReferral($yearLeader, 'August Report Student');
         $augustReferral->forceFill(['created_at' => '2026-08-15 10:00:00'])->save();
@@ -126,8 +154,24 @@ class AcademicReferralVisibilityTest extends TestCase
                 'semester' => 1,
             ]))
             ->assertOk()
-            ->assertSee('Semester 1 (Jan - Jun 2026)')
-            ->assertSee($juneReferral->student_name)
+            ->assertSee('Semester 1 (Aug - Nov 2025)')
+            ->assertSee($novemberReferral->student_name)
+            ->assertDontSee($marchReferral->student_name)
+            ->assertDontSee($juneReferral->student_name)
+            ->assertDontSee($augustReferral->student_name);
+
+        $this->actingAs($yearLeader)
+            ->get(route('academic.referrals.report', [
+                'report_generated' => 1,
+                'type' => 'semester',
+                'year' => 2026,
+                'semester' => 2,
+            ]))
+            ->assertOk()
+            ->assertSee('Semester 2 (Feb - May 2026)')
+            ->assertSee($marchReferral->student_name)
+            ->assertDontSee($novemberReferral->student_name)
+            ->assertDontSee($juneReferral->student_name)
             ->assertDontSee($augustReferral->student_name);
 
         $this->actingAs($yearLeader)
@@ -137,9 +181,11 @@ class AcademicReferralVisibilityTest extends TestCase
                 'year' => 2026,
             ]))
             ->assertOk()
-            ->assertSee('Year 2026')
+            ->assertSee('Academic Year 2025/2026')
             ->assertSee($juneReferral->student_name)
-            ->assertSee($augustReferral->student_name)
+            ->assertSee($marchReferral->student_name)
+            ->assertSee($novemberReferral->student_name)
+            ->assertDontSee($augustReferral->student_name)
             ->assertDontSee($priorYearReferral->student_name);
     }
 
