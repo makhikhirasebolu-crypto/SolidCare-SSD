@@ -459,7 +459,7 @@
                         </div>
                         <div data-report-field="week">
                             <label class="form-label">Week End Date</label>
-                            <input type="date" id="week-end-date" class="form-control" value="{{ $weekEndDate->toDateString() }}" readonly>
+                            <input type="date" name="week_end_date" id="week-end-date" class="form-control" value="{{ $weekEndDate->toDateString() }}" required>
                         </div>
                         <div data-report-field="semester">
                             <label class="form-label">Semester</label>

@@ -55,6 +55,7 @@ class AcademicReferralVisibilityTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertSee('name="week_end_date"', false)
             ->assertSee('value="2026-06-01"', false)
             ->assertSee('value="2026-06-07"', false)
             ->assertDontSee('value="2100-12-31"', false);

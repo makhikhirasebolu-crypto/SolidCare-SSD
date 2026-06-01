@@ -206,15 +206,23 @@ class AcademicReferralController extends Controller
         $semester = (int) $request->query('semester', 1);
         $semester = in_array($semester, [1, 2], true) ? $semester : 1;
         $weekStartDate = $this->parseReportDate($request->query('week_start_date'), now()->startOfWeek());
+        $weekEndDate = $this->parseReportDate(
+            $request->query('week_end_date'),
+            $weekStartDate->copy()->addDays(6)
+        );
+
+        if ($weekEndDate->lt($weekStartDate)) {
+            $weekEndDate = $weekStartDate->copy()->addDays(6)->endOfDay();
+        }
 
         [$startDate, $endDate, $reportLabel] = $this->resolveAcademicReportRange(
             $reportType,
             $year,
             $month,
             $semester,
-            $weekStartDate
+            $weekStartDate,
+            $weekEndDate
         );
-        $weekEndDate = $weekStartDate->copy()->addDays(6)->endOfDay();
 
         $referralQuery = $this->referralQueryForUser($user);
 
@@ -296,7 +304,8 @@ class AcademicReferralController extends Controller
         int $year,
         int $month,
         int $semester,
-        Carbon $weekStartDate
+        Carbon $weekStartDate,
+        Carbon $weekEndDate
     ): array {
         if ($reportType === 'general') {
             return [Carbon::create(1900, 1, 1)->startOfDay(), Carbon::create(2100, 12, 31)->endOfDay(), 'All Records'];
@@ -318,7 +327,7 @@ class AcademicReferralController extends Controller
 
         if ($reportType === 'week') {
             $startDate = $weekStartDate->copy()->startOfDay();
-            $endDate = $weekStartDate->copy()->addDays(6)->endOfDay();
+            $endDate = $weekEndDate->copy()->endOfDay();
 
             return [$startDate, $endDate, 'Week of ' . $startDate->format('M j, Y') . ' - ' . $endDate->format('M j, Y')];
         }
