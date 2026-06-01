@@ -23,7 +23,6 @@ use App\Models\Student;
 use App\Models\StudentReferral;
 use App\Models\User;
 use App\Models\YearLeader;
-use App\Notifications\QueuedVerifyEmail;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +31,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -251,19 +251,14 @@ class AuthController extends Controller
             'disability_details' => $data['disability_details'] ?? null,
         ]);
 
-        $emailSent = $this->sendStudentVerificationEmail($user);
-
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
-        return redirect()
-            ->route('verification.notice')
-            ->with(
-                $emailSent ? 'status' : 'error',
-                $emailSent
-                    ? 'Account created successfully. We are sending a verification link to your email address.'
-                    : 'Account created successfully, but the verification email could not be queued. Please use Resend Verification Email or contact SSD.'
-            );
+        return view('auth.verification-link', [
+            'user' => $user,
+            'verificationUrl' => $this->studentVerificationUrl($user),
+            'status' => 'Account created successfully. Click the button below to verify your account.',
+        ]);
     }
 
     public function showEmailVerificationNotice()
@@ -279,7 +274,11 @@ class AuthController extends Controller
             return redirect()->route('home');
         }
 
-        return view('auth.verify-email', ['user' => $user]);
+        return view('auth.verification-link', [
+            'user' => $user,
+            'verificationUrl' => $this->studentVerificationUrl($user),
+            'status' => session('status'),
+        ]);
     }
 
     public function verifyEmail(Request $request)
@@ -302,7 +301,7 @@ class AuthController extends Controller
                 : route('login');
 
             return redirect($target)
-                ->with('error', 'This verification link is no longer valid. Please request a new verification email.');
+                ->with('error', 'This verification link is no longer valid. Please open the verification page to generate a fresh link.');
         }
 
         if ($user->hasVerifiedEmail()) {
@@ -349,14 +348,11 @@ class AuthController extends Controller
             return redirect()->route('home');
         }
 
-        $emailSent = $this->sendStudentVerificationEmail($user);
-
-        return back()->with(
-            $emailSent ? 'status' : 'error',
-            $emailSent
-                ? 'A new verification link is being sent to your email address.'
-                : 'The verification email could not be queued. Please contact SSD if this continues.'
-        );
+        return view('auth.verification-link', [
+            'user' => $user,
+            'verificationUrl' => $this->studentVerificationUrl($user),
+            'status' => 'A fresh verification link is ready. Click the button below to verify your account.',
+        ]);
     }
 
     protected function registerAdminFromStudentPortal(Request $request)
@@ -594,24 +590,16 @@ class AuthController extends Controller
         return redirect()->intended(route('home'));
     }
 
-    protected function sendStudentVerificationEmail(User $user): bool
+    protected function studentVerificationUrl(User $user): string
     {
-        try {
-            $user->notify((new QueuedVerifyEmail())->onConnection('database'));
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::error('Student verification email could not be sent.', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'mailer' => config('mail.default'),
-                'mail_host' => config('mail.mailers.smtp.host'),
-                'queue_connection' => config('queue.default'),
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+        return URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(60),
+            [
+                'id' => $user->id,
+                'hash' => sha1($user->getEmailForVerification()),
+            ]
+        );
     }
 
     protected function normalizeLoginIdentifier(?string $value): ?string

@@ -3,9 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Verify Email - SolidCare SSD</title>
+    <title>Email Verification - SolidCare SSD</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -20,7 +21,7 @@
         }
 
         .card {
-            width: 440px;
+            width: 460px;
             max-width: 100%;
             background: #f8fafc;
             border: 1px solid rgba(148, 163, 184, 0.24);
@@ -62,12 +63,9 @@
             text-align: center;
         }
 
-        .status.error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
+        .verify-button,
         button {
+            display: block;
             width: 100%;
             padding: 14px;
             border: 0;
@@ -77,13 +75,26 @@
             font-size: 16px;
             font-weight: 700;
             cursor: pointer;
+            text-align: center;
+            text-decoration: none;
         }
 
-        .logout {
+        .copy-link {
+            background: #e5e7eb;
+            border-radius: 8px;
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.45;
+            margin-top: 18px;
+            overflow-wrap: anywhere;
+            padding: 12px;
+        }
+
+        .secondary {
             margin-top: 12px;
         }
 
-        .logout button {
+        .secondary button {
             background: transparent;
             color: #374151;
             border: 1px solid #cbd5e1;
@@ -92,28 +103,26 @@
 </head>
 <body>
     <main class="card">
-        <h1>Verify Your Email</h1>
+        <h1>Account Created Successfully</h1>
+
+        @if ($status ?? false)
+            <div class="status">{{ $status }}</div>
+        @endif
 
         @if (session('status'))
             <div class="status">{{ session('status') }}</div>
         @endif
 
-        @if (session('error'))
-            <div class="status error">{{ session('error') }}</div>
-        @endif
-
         <p>
-            We are sending a verification link to
+            Verify this account for
             <span class="email">{{ $user->email }}</span>
         </p>
-        <p>Open that email and confirm your address before continuing to SolidCare SSD. If it is not in your inbox, check spam or resend it.</p>
 
-        <form method="POST" action="{{ route('verification.send') }}">
-            @csrf
-            <button type="submit">Resend Verification Email</button>
-        </form>
+        <a href="{{ $verificationUrl }}" class="verify-button">Verify My Account</a>
 
-        <form method="POST" action="{{ route('logout') }}" class="logout">
+        <div class="copy-link">{{ $verificationUrl }}</div>
+
+        <form method="POST" action="{{ route('logout') }}" class="secondary">
             @csrf
             <button type="submit">Sign Out</button>
         </form>

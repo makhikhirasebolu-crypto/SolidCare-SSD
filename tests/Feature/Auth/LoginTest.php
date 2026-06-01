@@ -4,7 +4,6 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Admin;
 use App\Models\User;
-use App\Notifications\QueuedVerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -127,7 +126,7 @@ class LoginTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
-    public function test_registration_logs_in_the_student_and_redirects_to_email_verification(): void
+    public function test_registration_logs_in_the_student_and_shows_verification_link(): void
     {
         Notification::fake();
 
@@ -141,7 +140,10 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('verification.notice'));
+        $response->assertOk();
+        $response->assertViewIs('auth.verification-link');
+        $response->assertSee('Verify My Account');
+        $response->assertSee('/email/verify/', false);
 
         $this->assertDatabaseHas('users', [
             'email' => 'lehananthati@gmail.com',
@@ -155,11 +157,7 @@ class LoginTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertSessionHas('status', 'Account created successfully. We are sending a verification link to your email address.');
-        Notification::assertSentTo(
-            User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
-            QueuedVerifyEmail::class
-        );
+        Notification::assertNothingSent();
     }
 
     public function test_registration_does_not_require_admin_email_approval(): void
@@ -176,7 +174,9 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('verification.notice'));
+        $response->assertOk();
+        $response->assertViewIs('auth.verification-link');
+        $response->assertSee('Verify My Account');
 
         $this->assertDatabaseHas('users', [
             'email' => 'lehananthati@gmail.com',
@@ -186,10 +186,7 @@ class LoginTest extends TestCase
         ]);
         $this->assertDatabaseCount('students', 1);
         $this->assertAuthenticated();
-        Notification::assertSentTo(
-            User::where('email', 'lehananthati@gmail.com')->firstOrFail(),
-            QueuedVerifyEmail::class
-        );
+        Notification::assertNothingSent();
     }
 
     public function test_limkokwing_name_surname_email_registers_as_admin_from_student_portal(): void
@@ -539,7 +536,7 @@ class LoginTest extends TestCase
         Notification::assertNothingSent();
     }
 
-    public function test_student_registration_sends_verification_email_and_blocks_home_until_verified(): void
+    public function test_student_registration_shows_verification_link_and_blocks_home_until_verified(): void
     {
         Notification::fake();
 
@@ -553,14 +550,16 @@ class LoginTest extends TestCase
             'disability' => 'no',
         ]);
 
-        $response->assertRedirect(route('verification.notice'));
+        $response->assertOk();
+        $response->assertViewIs('auth.verification-link');
+        $response->assertSee('Verify My Account');
         $this->assertDatabaseHas('users', [
             'email' => 'missing@example.invalid',
             'email_verified_at' => null,
         ]);
 
         $user = User::where('email', 'missing@example.invalid')->firstOrFail();
-        Notification::assertSentTo($user, QueuedVerifyEmail::class);
+        Notification::assertNothingSent();
 
         $homeResponse = $this->get(route('home'));
         $homeResponse->assertRedirect(route('verification.notice'));
