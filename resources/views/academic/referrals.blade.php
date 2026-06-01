@@ -656,6 +656,36 @@
             white-space: pre-wrap;
         }
 
+        .read-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid #d7e2ee;
+            border-radius: 0.8rem;
+            overflow: hidden;
+            font-size: 0.78rem;
+        }
+
+        .read-table th,
+        .read-table td {
+            padding: 0.65rem;
+            border-bottom: 1px solid #e4edf6;
+            vertical-align: top;
+            color: #1e293b;
+        }
+
+        .read-table th {
+            background: #eef6ff;
+            color: #1e4a76;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .read-table tr:last-child td {
+            border-bottom: 0;
+        }
+
         .paper-feedback-form {
             background:
                 linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
@@ -814,6 +844,18 @@
             border: 0;
             border-radius: 0.7rem;
             background: #fbfdff;
+        }
+
+        .paper-table .form-control {
+            width: 100%;
+        }
+
+        .paper-table input.form-control {
+            min-height: 2.35rem;
+        }
+
+        .paper-table .group-feedback {
+            min-height: 3.5rem;
         }
 
         @media (max-width: 768px) {
@@ -1589,6 +1631,28 @@
                             $attendanceValue = function ($key, $default = '') use ($attendanceForm, $usingOldAttendance) {
                                 return $usingOldAttendance ? old($key, $attendanceForm[$key] ?? $default) : ($attendanceForm[$key] ?? $default);
                             };
+                            $groupStudentRows = $usingOldAttendance
+                                ? old('group_students', $attendanceForm['group_students'] ?? [])
+                                : ($attendanceForm['group_students'] ?? []);
+
+                            if (empty($groupStudentRows) && filled($attendanceValue('group_students_feedback'))) {
+                                $groupStudentRows = [[
+                                    'first_name' => '',
+                                    'surname' => '',
+                                    'feedback' => $attendanceValue('group_students_feedback'),
+                                ]];
+                            }
+
+                            $groupStudentRows = array_values(array_pad($groupStudentRows, 5, [
+                                'first_name' => '',
+                                'surname' => '',
+                                'feedback' => '',
+                            ]));
+                            $savedGroupStudentRows = array_values(array_filter($attendanceForm['group_students'] ?? [], function ($student) {
+                                return filled($student['first_name'] ?? null)
+                                    || filled($student['surname'] ?? null)
+                                    || filled($student['feedback'] ?? null);
+                            }));
                             $canCommentOnReferral = $canComment
                                 && (
                                     in_array($user->role, ['executive', 'ssd_assistant_1', 'ssd_assistant_2'], true)
@@ -1853,11 +1917,19 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <tr>
-                                                        <td colspan="3">
-                                                            <textarea name="group_students_feedback" rows="5" class="form-control" placeholder="List each student and feedback, one line per student.">{{ $attendanceValue('group_students_feedback') }}</textarea>
-                                                        </td>
-                                                    </tr>
+                                                    @foreach ($groupStudentRows as $rowIndex => $groupStudent)
+                                                        <tr>
+                                                            <td>
+                                                                <input type="text" name="group_students[{{ $rowIndex }}][first_name]" class="form-control" value="{{ $groupStudent['first_name'] ?? '' }}">
+                                                            </td>
+                                                            <td>
+                                                                <input type="text" name="group_students[{{ $rowIndex }}][surname]" class="form-control" value="{{ $groupStudent['surname'] ?? '' }}">
+                                                            </td>
+                                                            <td>
+                                                                <textarea name="group_students[{{ $rowIndex }}][feedback]" rows="2" class="form-control group-feedback">{{ $groupStudent['feedback'] ?? '' }}</textarea>
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
                                                 </tbody>
                                             </table>
 
@@ -1908,7 +1980,31 @@
                                         <div class="sheet-read"><strong>Date</strong><span>{{ $attendanceForm['attended_on'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Feedback</strong><p>{{ $attendanceForm['feedback'] ?? 'Not recorded' }}</p></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Group Problems</strong><p>{{ $attendanceForm['group_problems'] ?? 'Not recorded' }}</p></div>
-                                        <div class="sheet-read" style="grid-column:1/-1;"><strong>Group of Students / Feedback as Obtained</strong><p>{{ $attendanceForm['group_students_feedback'] ?? 'Not recorded' }}</p></div>
+                                        <div class="sheet-read" style="grid-column:1/-1;">
+                                            <strong>Group of Students / Feedback as Obtained</strong>
+                                            @if (! empty($savedGroupStudentRows))
+                                                <table class="read-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width:22%;">First Name</th>
+                                                            <th style="width:22%;">Surname</th>
+                                                            <th>Feedback as obtained from the student</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach ($savedGroupStudentRows as $groupStudent)
+                                                            <tr>
+                                                                <td>{{ $groupStudent['first_name'] ?: 'Not recorded' }}</td>
+                                                                <td>{{ $groupStudent['surname'] ?: 'Not recorded' }}</td>
+                                                                <td>{{ $groupStudent['feedback'] ?: 'Not recorded' }}</td>
+                                                            </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            @else
+                                                <p>{{ $attendanceForm['group_students_feedback'] ?? 'Not recorded' }}</p>
+                                            @endif
+                                        </div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Action Taken</strong><p>{{ $attendanceForm['action_taken'] ?? 'Not recorded' }}</p></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Plan of Action</strong><p>{{ $attendanceForm['plan_of_action'] ?? 'Not recorded' }}</p></div>
                                     </div>

@@ -374,12 +374,41 @@ class AcademicReferralController extends Controller
             'feedback' => 'required|string',
             'group_problems' => 'nullable|string',
             'group_students_feedback' => 'nullable|string',
+            'group_students' => 'nullable|array',
+            'group_students.*.first_name' => 'nullable|string|max:255',
+            'group_students.*.surname' => 'nullable|string|max:255',
+            'group_students.*.feedback' => 'nullable|string',
             'action_taken' => 'required|string',
             'plan_of_action' => 'nullable|string',
             'ssd_officer_name' => 'required|string|max:255',
             'designation' => 'nullable|string|max:255',
             'attended_on' => 'required|date',
         ]);
+
+        $groupStudents = collect($validated['group_students'] ?? [])
+            ->map(fn ($student) => [
+                'first_name' => trim((string) ($student['first_name'] ?? '')),
+                'surname' => trim((string) ($student['surname'] ?? '')),
+                'feedback' => trim((string) ($student['feedback'] ?? '')),
+            ])
+            ->filter(fn ($student) => filled($student['first_name']) || filled($student['surname']) || filled($student['feedback']))
+            ->values()
+            ->all();
+
+        $validated['group_students'] = $groupStudents;
+
+        if (! empty($groupStudents)) {
+            $validated['group_students_feedback'] = collect($groupStudents)
+                ->map(function ($student) {
+                    $name = trim($student['first_name'] . ' ' . $student['surname']);
+
+                    return filled($name)
+                        ? $name . ': ' . $student['feedback']
+                        : $student['feedback'];
+                })
+                ->filter()
+                ->implode("\n");
+        }
 
         $referral->update([
             'ssd_attendance_form' => $validated,
