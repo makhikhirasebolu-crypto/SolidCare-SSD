@@ -339,8 +339,8 @@ class AcademicReferralController extends Controller
 
         $startYear = $semester === 1 ? $year - 1 : $year;
         $startMonth = $semester === 1 ? 8 : 2;
-        $endYear = $semester === 1 ? $year - 1 : $year;
-        $endMonth = $semester === 1 ? 11 : 5;
+        $endYear = $semester === 1 ? $year : $year;
+        $endMonth = $semester === 1 ? 1 : 7;
         $startDate = Carbon::create($startYear, $startMonth, 1)->startOfDay();
         $endDate = Carbon::create($endYear, $endMonth, 1)->endOfMonth()->endOfDay();
 

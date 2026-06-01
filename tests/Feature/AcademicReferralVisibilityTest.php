@@ -76,8 +76,8 @@ class AcademicReferralVisibilityTest extends TestCase
 
             $response
                 ->assertOk()
-                ->assertSee('Semester 2 (Feb - May 2026)')
-                ->assertSee('<option value="2" selected>Semester 2 (Feb - May)</option>', false);
+                ->assertSee('Semester 2 (Feb - Jul 2026)')
+                ->assertSee('<option value="2" selected>Semester 2 (Feb - Jul)</option>', false);
         } finally {
             Carbon::setTestNow();
         }
@@ -154,7 +154,7 @@ class AcademicReferralVisibilityTest extends TestCase
                 'semester' => 1,
             ]))
             ->assertOk()
-            ->assertSee('Semester 1 (Aug - Nov 2025)')
+            ->assertSee('Semester 1 (Aug - Jan 2026)')
             ->assertSee($novemberReferral->student_name)
             ->assertDontSee($marchReferral->student_name)
             ->assertDontSee($juneReferral->student_name)
@@ -168,10 +168,10 @@ class AcademicReferralVisibilityTest extends TestCase
                 'semester' => 2,
             ]))
             ->assertOk()
-            ->assertSee('Semester 2 (Feb - May 2026)')
+            ->assertSee('Semester 2 (Feb - Jul 2026)')
             ->assertSee($marchReferral->student_name)
+            ->assertSee($juneReferral->student_name)
             ->assertDontSee($novemberReferral->student_name)
-            ->assertDontSee($juneReferral->student_name)
             ->assertDontSee($augustReferral->student_name);
 
         $this->actingAs($yearLeader)
