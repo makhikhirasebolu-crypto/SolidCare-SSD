@@ -704,26 +704,18 @@
             margin-bottom: 0.75rem;
         }
 
-        .paper-logo {
-            width: min(210px, 100%);
+        .paper-institution-name {
             margin: 0 auto 0.85rem;
-            padding: 0.65rem 0.8rem;
             text-align: center;
-            border: 1px solid #d8e5f3;
-            border-radius: 0.9rem;
-            background: linear-gradient(135deg, #16324f, #2c5282);
-            color: #fff;
-            line-height: 1.05;
-            text-transform: uppercase;
+            color: #0f2b4d;
+            line-height: 1.25;
             font-weight: 800;
-            box-shadow: 0 12px 24px rgba(44, 82, 130, 0.18);
         }
 
-        .paper-logo span {
+        .paper-institution-name span {
             display: block;
-            font-size: 0.62rem;
+            font-size: 0.75rem;
             font-weight: 600;
-            letter-spacing: 0.02em;
             margin-top: 0.15rem;
         }
 
@@ -1827,7 +1819,7 @@
 
                                         <div class="paper-feedback-form">
                                             <div class="paper-code">LUCT Lesotho SSD/FF 1</div>
-                                            <div class="paper-logo">
+                                            <div class="paper-institution-name">
                                                 Limkokwing University
                                                 <span>of Creative Technology</span>
                                                 <span>Lesotho</span>

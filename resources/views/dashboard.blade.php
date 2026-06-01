@@ -255,51 +255,45 @@
                 border: 1px solid rgba(240,180,41,0.2);
                 box-shadow: 0 15px 35px -12px rgba(0,0,0,0.5);
             }
-            .hero-logo-lockup {
+            .hero-service-lockup {
                 display: inline-flex;
                 flex-direction: column;
                 align-items: center;
                 gap: 0.9rem;
                 width: min(100%, 360px);
             }
-            .hero-logo-panel {
+            .hero-service-panel {
                 width: 100%;
-                background: #18181c;
+                background: rgba(255,255,255,0.08);
                 color: #f8f7f2;
-                padding: 1rem 1.3rem 0.8rem;
+                padding: 1.25rem;
                 border: 1px solid rgba(255,255,255,0.16);
                 box-shadow: 0 14px 28px rgba(0,0,0,0.32);
-                text-align: left;
+                text-align: center;
             }
-            .hero-logo-title {
-                font-family: Georgia, 'Times New Roman', serif;
-                font-size: clamp(1.9rem, 3.8vw, 2.65rem);
-                line-height: 0.88;
-                letter-spacing: 0.04em;
-                text-transform: uppercase;
-            }
-            .hero-logo-subtitle {
-                margin-top: 0.4rem;
-                font-family: Georgia, 'Times New Roman', serif;
-                font-size: 0.9rem;
+            .hero-service-title {
+                font-size: clamp(1.65rem, 3vw, 2.35rem);
                 line-height: 1;
-                letter-spacing: 0.1em;
-                text-transform: uppercase;
+                font-weight: 800;
             }
-            .hero-logo-country {
+            .hero-service-subtitle {
+                margin-top: 0.65rem;
+                font-size: 0.92rem;
+                line-height: 1.45;
+                color: rgba(255,255,255,0.78);
+            }
+            .hero-institution-name {
                 display: inline-flex;
                 align-items: center;
                 gap: 0.8rem;
                 width: 100%;
                 color: #f5e9c9;
-                font-family: Georgia, 'Times New Roman', serif;
-                font-size: 1.3rem;
-                letter-spacing: 0.1em;
-                text-transform: uppercase;
+                font-size: 0.9rem;
+                font-weight: 700;
                 justify-content: center;
             }
-            .hero-logo-country::before,
-            .hero-logo-country::after {
+            .hero-institution-name::before,
+            .hero-institution-name::after {
                 content: "";
                 flex: 1 1 2rem;
                 max-width: 4rem;
@@ -611,20 +605,19 @@
                     padding: 20px 14px;
                     border-radius: 28px;
                 }
-                .hero-logo-lockup {
+                .hero-service-lockup {
                     width: min(100%, 280px);
                 }
-                .hero-logo-panel {
+                .hero-service-panel {
                     padding: 0.75rem 0.85rem 0.68rem;
                 }
-                .hero-logo-title {
+                .hero-service-title {
                     font-size: clamp(1.35rem, 6.5vw, 1.7rem);
                 }
-                .hero-logo-subtitle {
+                .hero-service-subtitle {
                     font-size: 0.64rem;
-                    letter-spacing: 0.08em;
                 }
-                .hero-logo-country {
+                .hero-institution-name {
                     gap: 0.6rem;
                     font-size: 0.95rem;
                 }
@@ -688,18 +681,17 @@
                     padding: 16px 10px;
                     border-radius: 22px;
                 }
-                .hero-logo-lockup {
+                .hero-service-lockup {
                     width: min(100%, 248px);
                 }
-                .hero-logo-title {
+                .hero-service-title {
                     font-size: 1.25rem;
                 }
-                .hero-logo-subtitle {
+                .hero-service-subtitle {
                     font-size: 0.58rem;
                 }
-                .hero-logo-country {
+                .hero-institution-name {
                     font-size: 0.84rem;
-                    letter-spacing: 0.08em;
                 }
             }
         </style>
@@ -755,12 +747,12 @@
                 </div>
                 <div class="hero-illustration">
                     <div class="glass-card-illus">
-                        <div class="hero-logo-lockup" aria-label="Limkokwing University of Creative Technology Lesotho">
-                            <div class="hero-logo-panel">
-                                <div class="hero-logo-title">Limkokwing<br>University</div>
-                                <div class="hero-logo-subtitle">Of Creative Technology</div>
+                        <div class="hero-service-lockup" aria-label="SolidCare Student Support Directorate">
+                            <div class="hero-service-panel">
+                                <div class="hero-service-title">SolidCare SSD</div>
+                                <div class="hero-service-subtitle">Student wellness, referrals, health, counselling, and accommodation support.</div>
                             </div>
-                            <div class="hero-logo-country">Lesotho</div>
+                            <div class="hero-institution-name">Limkokwing University of Creative Technology, Lesotho</div>
                         </div>
                     </div>
                 </div>
