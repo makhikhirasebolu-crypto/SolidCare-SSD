@@ -276,14 +276,12 @@ class AcademicReferralController extends Controller
             'action_taken' => 'required|string',
             'referring_lecturer_email' => 'nullable|email|max:255',
             'extension' => 'nullable|string|max:100',
-            'signature_name' => 'nullable|string|max:255',
             'referral_date' => 'required|date',
             'group_students_details' => 'nullable|string',
             'group_reasons_for_referral' => 'nullable|string',
             'group_problem_identified_when' => 'nullable|string|max:255',
             'group_action_taken' => 'nullable|string',
             'group_referring_lecturer_name' => 'nullable|string|max:255',
-            'group_signature_name' => 'nullable|string|max:255',
             'group_referral_date' => 'nullable|date',
         ]);
 
@@ -381,7 +379,6 @@ class AcademicReferralController extends Controller
             'ssd_officer_name' => 'required|string|max:255',
             'designation' => 'nullable|string|max:255',
             'attended_on' => 'required|date',
-            'signature_name' => 'nullable|string|max:255',
         ]);
 
         $referral->update([

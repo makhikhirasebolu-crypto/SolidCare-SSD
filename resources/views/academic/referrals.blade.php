@@ -657,33 +657,36 @@
         }
 
         .paper-feedback-form {
-            background: #fff;
+            background:
+                linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
             color: #1f2937;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            padding: 1.2rem;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-            font-family: Arial, Helvetica, sans-serif;
+            border: 1px solid #dbe5f0;
+            border-radius: 1.25rem;
+            padding: 1.35rem;
+            box-shadow: 0 14px 34px rgba(15, 43, 77, 0.08);
         }
 
         .paper-feedback-form .paper-code {
             text-align: right;
-            color: #6b7280;
+            color: #64748b;
             font-size: 0.7rem;
-            margin-bottom: 0.5rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
         }
 
         .paper-logo {
-            width: 180px;
-            margin: 0 auto 0.7rem;
-            padding: 0.4rem 0.6rem;
+            width: min(210px, 100%);
+            margin: 0 auto 0.85rem;
+            padding: 0.65rem 0.8rem;
             text-align: center;
-            border: 1px solid #9ca3af;
-            background: #4b5563;
+            border: 1px solid #d8e5f3;
+            border-radius: 0.9rem;
+            background: linear-gradient(135deg, #16324f, #2c5282);
             color: #fff;
-            line-height: 1;
+            line-height: 1.05;
             text-transform: uppercase;
             font-weight: 800;
+            box-shadow: 0 12px 24px rgba(44, 82, 130, 0.18);
         }
 
         .paper-logo span {
@@ -696,15 +699,18 @@
 
         .paper-title {
             text-align: center;
-            margin-bottom: 1rem;
+            margin-bottom: 1.15rem;
+            color: #0f2b4d;
         }
 
         .paper-title strong {
             display: inline-block;
-            background: #6b7280;
-            color: #fff;
-            padding: 0.18rem 0.55rem;
-            font-size: 0.7rem;
+            background: #eef6ff;
+            color: #1e4a76;
+            border: 1px solid #d7e8fb;
+            border-radius: 999px;
+            padding: 0.32rem 0.75rem;
+            font-size: 0.72rem;
             text-transform: uppercase;
             margin-top: 0.2rem;
             max-width: 100%;
@@ -713,22 +719,22 @@
         .paper-section-label {
             font-weight: 700;
             font-size: 0.78rem;
-            color: #374151;
-            margin: 1rem 0 0.35rem;
+            color: #16324f;
+            margin: 1.1rem 0 0.45rem;
+            letter-spacing: 0.02em;
         }
 
         .paper-row {
             display: grid;
             grid-template-columns: repeat(12, minmax(0, 1fr));
-            gap: 0.45rem 0.75rem;
-            align-items: end;
-            margin-bottom: 0.55rem;
+            gap: 0.85rem;
+            align-items: stretch;
+            margin-bottom: 0.85rem;
         }
 
         .paper-field {
             grid-column: span 4;
-            display: flex;
-            align-items: end;
+            display: grid;
             gap: 0.35rem;
             min-width: 0;
         }
@@ -739,60 +745,75 @@
         .paper-field.full { grid-column: 1 / -1; }
 
         .paper-field label {
-            flex: 0 0 auto;
             margin: 0;
-            color: #374151;
-            font-size: 0.72rem;
+            color: #475569;
+            font-size: 0.68rem;
             font-weight: 700;
-            text-transform: none;
-            letter-spacing: 0;
-            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            line-height: 1.35;
         }
 
         .paper-feedback-form .form-control {
-            border: 0;
-            border-bottom: 1px solid #9ca3af;
-            border-radius: 0;
-            padding: 0.18rem 0.25rem;
-            min-height: 1.65rem;
-            background: transparent;
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 0.82rem;
-            box-shadow: none;
+            border: 1px solid #d7e2ee;
+            border-radius: 0.75rem;
+            padding: 0.62rem 0.75rem;
+            min-height: 2.55rem;
+            background: #fff;
+            color: #172033;
+            font-size: 0.88rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+
+        .paper-feedback-form .form-control:focus {
+            border-color: #2c5282;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(44, 82, 130, 0.12);
         }
 
         .paper-feedback-form textarea.form-control {
-            line-height: 1.75rem;
-            background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 1.65rem, #9ca3af 1.68rem);
-            background-size: 100% 1.75rem;
-            border-bottom: 0;
+            line-height: 1.6;
+            min-height: 7rem;
             resize: vertical;
         }
 
         .paper-table {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 0.35rem;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 0.45rem;
             font-size: 0.78rem;
+            overflow: hidden;
+            border: 1px solid #d7e2ee;
+            border-radius: 0.95rem;
         }
 
         .paper-table th,
         .paper-table td {
-            border: 1px solid #cbd5e1;
-            padding: 0.35rem;
+            border: 0;
+            border-bottom: 1px solid #e4edf6;
+            padding: 0.7rem;
             vertical-align: top;
+            background: #fff;
         }
 
         .paper-table th {
             text-align: left;
-            background: #f8fafc;
-            color: #374151;
+            background: #eef6ff;
+            color: #1e4a76;
             font-weight: 700;
+        }
+
+        .paper-table tr:last-child td {
+            border-bottom: 0;
         }
 
         .paper-table textarea.form-control {
             min-height: 9rem;
             border: 0;
+            border-radius: 0.7rem;
+            background: #fbfdff;
         }
 
         @media (max-width: 768px) {
@@ -810,12 +831,6 @@
             .paper-field.wide,
             .paper-field.full {
                 grid-column: 1 / -1;
-            }
-
-            .paper-field {
-                align-items: stretch;
-                flex-direction: column;
-                gap: 0.15rem;
             }
 
             .paper-field label {
@@ -1857,7 +1872,7 @@
                                                     <label>SSD Officer's Name</label>
                                                     <input type="text" name="ssd_officer_name" class="form-control" value="{{ $attendanceValue('ssd_officer_name', $defaultOfficerName) }}" required>
                                                 </div>
-                                                <div class="paper-field tiny">
+                                                <div class="paper-field wide">
                                                     <label>Designation</label>
                                                     <input type="text" name="designation" class="form-control" value="{{ $attendanceValue('designation', $defaultDesignation) }}">
                                                 </div>
@@ -1865,13 +1880,9 @@
                                                     <label>Date</label>
                                                     <input type="date" name="attended_on" class="form-control" value="{{ $attendanceValue('attended_on', $defaultAttendanceDate) }}" required>
                                                 </div>
-                                                <div class="paper-field tiny">
-                                                    <label>Signature</label>
-                                                    <input type="text" name="signature_name" class="form-control" value="{{ $attendanceValue('signature_name') }}">
-                                                </div>
                                             </div>
                                             <div class="sheet-actions">
-                                                <button type="submit" class="submit-btn"><i class="fas fa-file-signature"></i> Save SSD Attendance Form</button>
+                                                <button type="submit" class="submit-btn"><i class="fas fa-save"></i> Save SSD Attendance Form</button>
                                                 <button type="button" class="btn-secondary" onclick="closeStudentDetails()"><i class="fas fa-times"></i> Done</button>
                                             </div>
                                             <div class="sheet-note">Saving this form marks a pending referral as reviewed and keeps the paper-style attendance details attached to the student case.</div>
@@ -1895,7 +1906,6 @@
                                         <div class="sheet-read"><strong>SSD Officer's Name</strong><span>{{ $attendanceForm['ssd_officer_name'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Designation</strong><span>{{ $attendanceForm['designation'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read"><strong>Date</strong><span>{{ $attendanceForm['attended_on'] ?? 'Not recorded' }}</span></div>
-                                        <div class="sheet-read"><strong>Signature</strong><span>{{ $attendanceForm['signature_name'] ?? 'Not recorded' }}</span></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Feedback</strong><p>{{ $attendanceForm['feedback'] ?? 'Not recorded' }}</p></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Group Problems</strong><p>{{ $attendanceForm['group_problems'] ?? 'Not recorded' }}</p></div>
                                         <div class="sheet-read" style="grid-column:1/-1;"><strong>Group of Students / Feedback as Obtained</strong><p>{{ $attendanceForm['group_students_feedback'] ?? 'Not recorded' }}</p></div>
