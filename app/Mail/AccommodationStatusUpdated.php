@@ -51,9 +51,9 @@ class AccommodationStatusUpdated extends Mailable
     protected function subjectLine(): string
     {
         return match ($this->application->status) {
-            'admitted' => 'Your accommodation application has been admitted',
-            'conditional' => 'Your accommodation application is conditional',
-            'rejected' => 'Your accommodation application status has been updated',
+            'admitted' => 'Accommodation Approved',
+            'conditional' => 'Accommodation Application Conditional',
+            'rejected' => 'Accommodation Rejected',
             default => 'Your accommodation application status has been updated',
         };
     }
@@ -61,9 +61,9 @@ class AccommodationStatusUpdated extends Mailable
     protected function heading(): string
     {
         return match ($this->application->status) {
-            'admitted' => 'Accommodation Application Admitted',
+            'admitted' => 'Accommodation Approved',
             'conditional' => 'Accommodation Application Conditional',
-            'rejected' => 'Accommodation Application Update',
+            'rejected' => 'Accommodation Rejected',
             default => 'Accommodation Status Updated',
         };
     }
@@ -71,9 +71,9 @@ class AccommodationStatusUpdated extends Mailable
     protected function summary(): string
     {
         return match ($this->application->status) {
-            'admitted' => 'Your accommodation application has been admitted successfully.',
-            'conditional' => 'Your accommodation application is currently conditional while the accommodation team completes a final review.',
-            'rejected' => 'Your accommodation application was not approved at this time.',
+            'admitted' => 'Your accommodation application has been approved.',
+            'conditional' => 'Your accommodation application status is now Conditional.',
+            'rejected' => 'Your accommodation application has been rejected.',
             default => 'Your accommodation application status has been updated.',
         };
     }

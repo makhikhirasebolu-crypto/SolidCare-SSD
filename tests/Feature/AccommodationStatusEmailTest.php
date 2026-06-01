@@ -43,7 +43,7 @@ class AccommodationStatusEmailTest extends TestCase
 
         $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Your accommodation application has been approved.');
         $this->assertRawAccommodationEmailSent('student.account@example.com', 'Accommodation Approved', 'Your accommodation application has been approved.');
-        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated room: A-04.');
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated Room:</strong> A-04');
     }
 
     public function test_executive_can_resend_accommodation_status_email_for_a_decided_application(): void
@@ -67,7 +67,7 @@ class AccommodationStatusEmailTest extends TestCase
 
         $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Your accommodation application has been approved.');
         $this->assertRawAccommodationEmailSent('student.account@example.com', 'Accommodation Approved', 'Your accommodation application has been approved.');
-        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated room: B-07.');
+        $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated Room:</strong> B-07');
     }
 
     public function test_pending_admissions_page_hides_recent_decisions(): void
@@ -216,7 +216,7 @@ class AccommodationStatusEmailTest extends TestCase
 
             return collect($message->getTo())->contains(fn ($address) => $address->getAddress() === $recipient)
                 && $message->getSubject() === $subject
-                && str_contains((string) $message->getTextBody(), $bodyExcerpt);
+                && str_contains((string) ($message->getTextBody() ?: $message->getHtmlBody()), $bodyExcerpt);
         });
 
         $this->assertTrue($matched, "Expected raw email to {$recipient} with subject {$subject} was not sent.");

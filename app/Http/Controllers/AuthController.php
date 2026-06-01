@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Counselling\Models\EmergencyCounsellingModel;
 use App\Counselling\Support\DatasetEmergencyCounsellingResponder;
+use App\Mail\AccommodationStatusUpdated;
 use App\Mail\CounsellingSessionScheduled;
 use App\Mail\CheckoutApproved;
 use App\Mail\CheckoutRejected;
@@ -3026,13 +3027,7 @@ class AuthController extends Controller
 
         foreach ($recipients as $recipient) {
             try {
-                $sentMessage = Mail::raw(
-                    $this->accommodationStatusEmailBody($application),
-                    function ($message) use ($recipient, $application) {
-                        $message->to($recipient)
-                            ->subject($this->accommodationStatusEmailSubject($application));
-                    }
-                );
+                $sentMessage = Mail::to($recipient)->send(new AccommodationStatusUpdated($application));
 
                 $submittedRecipients[] = $recipient;
 
@@ -3092,70 +3087,6 @@ class AuthController extends Controller
         }
 
         return array_values($recipients);
-    }
-
-    protected function accommodationStatusEmailSubject(AccommodationApplication $application): string
-    {
-        return match ($application->status) {
-            'admitted' => 'Accommodation Approved',
-            'rejected' => 'Accommodation Rejected',
-            'conditional' => 'Accommodation Application Conditional',
-            default => 'Accommodation Status Updated',
-        };
-    }
-
-    protected function accommodationStatusEmailBody(AccommodationApplication $application): string
-    {
-        $name = $application->full_name ?: 'Student';
-
-        if ($application->status === 'admitted') {
-            $lines = [
-                'Hello ' . $name . ',',
-                '',
-                'Your accommodation application has been approved.',
-            ];
-
-            if ($application->room) {
-                $lines[] = 'Allocated room: ' . $this->formatAccommodationRoomLabel($application->room) . '.';
-            }
-
-            if ($application->check_in_date) {
-                $lines[] = 'Check-in date: ' . $application->check_in_date->format('F j, Y') . '.';
-            }
-
-            $lines[] = '';
-            $lines[] = 'Thank you,';
-            $lines[] = 'SolidCare SSD';
-
-            return implode(PHP_EOL, $lines);
-        }
-
-        if ($application->status === 'rejected') {
-            $lines = [
-                'Hello ' . $name . ',',
-                '',
-                'Your accommodation application has been rejected.',
-            ];
-
-            if ($application->rejection_reason) {
-                $lines[] = 'Reason: ' . $application->rejection_reason;
-            }
-
-            $lines[] = '';
-            $lines[] = 'Thank you,';
-            $lines[] = 'SolidCare SSD';
-
-            return implode(PHP_EOL, $lines);
-        }
-
-        return implode(PHP_EOL, [
-            'Hello ' . $name . ',',
-            '',
-            'Your accommodation application status is now ' . Str::headline($application->status) . '.',
-            '',
-            'Thank you,',
-            'SolidCare SSD',
-        ]);
     }
 
     protected function formatEmailRecipientList(array $recipients): string
