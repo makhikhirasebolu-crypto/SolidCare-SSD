@@ -314,7 +314,7 @@
                                         <span>{{ $application->created_at->format('F j, Y g:i A') }}</span>
                                     </div>
                                     <div class="info-item">
-                                        <span class="info-label">District and Village</span>
+                                        <span class="info-label">District</span>
                                         <span>{{ $application->district ?: 'Not recorded' }}</span>
                                     </div>
                                     <div class="info-item">
@@ -324,10 +324,6 @@
                                     <div class="info-item" style="grid-column: 1 / -1;">
                                         <span class="info-label">Next Of Kin</span>
                                         <span>{{ $nextOfKinSummary ?: 'Not recorded' }}</span>
-                                    </div>
-                                    <div class="info-item" style="grid-column: 1 / -1;">
-                                        <span class="info-label">Address (Home Address)</span>
-                                        <span>{{ $application->address }}</span>
                                     </div>
                                     <div class="info-item" style="grid-column: 1 / -1;">
                                         <span class="info-label">Student Health Information</span>
@@ -379,67 +375,6 @@
                                 @else
                                     <p class="helper-note mb-0">Only executive can update application statuses from this page.</p>
                                 @endif
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @endif
-
-            @if (isset($decidedApplications) && $decidedApplications->isNotEmpty())
-                <div class="section-heading mt-5">
-                    <h3>Recent Admission Decisions</h3>
-                    <p>Latest students admitted, rejected, or marked conditional and the staff member who processed the decision.</p>
-                </div>
-
-                <div class="row g-4">
-                    @foreach ($decidedApplications as $decidedApplication)
-                        <div class="col-12">
-                            <div class="application-card p-4">
-                                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
-                                    <div>
-                                        <h4>{{ $decidedApplication->full_name }}</h4>
-                                        <p class="mb-0 text-secondary">{{ $decidedApplication->email }}</p>
-                                    </div>
-                                    <span class="status-badge {{ $decidedApplication->status }}">{{ ucfirst($decidedApplication->status) }}</span>
-                                </div>
-
-                                <div class="info-grid">
-                                    <div class="info-item">
-                                        <span class="info-label">Student ID</span>
-                                        <span>{{ $decidedApplication->student_id ?: optional($decidedApplication->user)->student_id ?: 'Not recorded' }}</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Room</span>
-                                        <span>
-                                            @if ($decidedApplication->room)
-                                                {{ $decidedApplication->room->block_name }}-{{ str_pad((string) $decidedApplication->room->room_number, 2, '0', STR_PAD_LEFT) }}
-                                            @else
-                                                Not assigned
-                                            @endif
-                                        </span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Decision Done By</span>
-                                        <span>
-                                            @if ($decidedApplication->admissionProcessedBy)
-                                                {{ $decidedApplication->admissionProcessedBy->name ?: $decidedApplication->admissionProcessedBy->email }}
-                                                ({{ \Illuminate\Support\Str::headline($decidedApplication->admissionProcessedBy->role) }})
-                                            @else
-                                                Not recorded
-                                            @endif
-                                        </span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">Decision Updated</span>
-                                        <span>{{ optional($decidedApplication->updated_at)->format('F j, Y g:i A') }}</span>
-                                    </div>
-                                    @if ($decidedApplication->rejection_reason)
-                                        <div class="info-item" style="grid-column: 1 / -1;">
-                                            <span class="info-label">Reason</span>
-                                            <span>{{ $decidedApplication->rejection_reason }}</span>
-                                        </div>
-                                    @endif
-                                </div>
                             </div>
                         </div>
                     @endforeach

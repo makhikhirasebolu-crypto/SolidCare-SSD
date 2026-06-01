@@ -176,7 +176,7 @@
                                 @php
                                     $statusLabel = ucfirst(str_replace('_', ' ', $application->status));
                                     $appliedAt = optional($application->created_at)->format('F j, Y g:i A') ?? 'Not recorded';
-                                    $submittedAddress = collect([$application->district, $application->village])->filter()->implode(', ');
+                                    $submittedHomeAddress = $application->village ?: $application->address;
                                 @endphp
 
                                 <div class="status-panel">
@@ -248,9 +248,13 @@
                                             <span class="application-label">Check-In Date</span>
                                             <div class="application-value">{{ optional($application->check_in_date)->format('F j, Y') ?: 'Not recorded' }}</div>
                                         </div>
+                                        <div class="application-item">
+                                            <span class="application-label">District</span>
+                                            <div class="application-value">{{ $application->district ?: 'Not recorded' }}</div>
+                                        </div>
                                         <div class="application-item wide">
-                                            <span class="application-label">Application Address</span>
-                                            <div class="application-value">{{ $submittedAddress !== '' ? $submittedAddress : ($application->address ?: 'Not recorded') }}</div>
+                                            <span class="application-label">Home Address</span>
+                                            <div class="application-value">{{ $submittedHomeAddress ?: 'Not recorded' }}</div>
                                         </div>
                                     </div>
                                 </div>

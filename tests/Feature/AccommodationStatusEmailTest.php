@@ -70,7 +70,7 @@ class AccommodationStatusEmailTest extends TestCase
         $this->assertRawAccommodationEmailSent($application->email, 'Accommodation Approved', 'Allocated room: B-07.');
     }
 
-    public function test_pending_admissions_page_shows_recent_decisions_with_staff_audit(): void
+    public function test_pending_admissions_page_hides_recent_decisions(): void
     {
         [$executive, $application] = $this->createExecutiveAndApplication();
 
@@ -83,11 +83,10 @@ class AccommodationStatusEmailTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Recent Admission Decisions')
-            ->assertSee($application->full_name)
-            ->assertSee('Decision Done By')
-            ->assertSee('Executive User')
-            ->assertSee('Executive')
+            ->assertSee('No Pending Applications')
+            ->assertDontSee('Recent Admission Decisions')
+            ->assertDontSee($application->full_name)
+            ->assertDontSee('Decision Done By')
             ->assertDontSee('Resend Email')
             ->assertDontSee(route('student.accommodation.resend-email', $application), false);
     }

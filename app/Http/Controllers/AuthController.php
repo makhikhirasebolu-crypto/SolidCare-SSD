@@ -2017,8 +2017,8 @@ class AuthController extends Controller
         }
 
         $address = $data['district'] === 'Other'
-            ? collect([$data['foreign_country'] ?? null, $data['foreign_physical_address'] ?? null])->filter()->implode(', ')
-            : collect([$data['district'], $data['village'] ?? null])->filter()->implode(', ');
+            ? trim((string) ($data['foreign_physical_address'] ?? ''))
+            : trim((string) ($data['village'] ?? ''));
 
         $existing = $this->findExistingAccommodationApplication($user, $data['national_id']);
 

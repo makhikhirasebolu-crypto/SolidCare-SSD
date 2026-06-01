@@ -619,8 +619,8 @@ textarea:focus {
                                 </div>
 
                                 <div class="field">
-                                    <label for="district">District and Village</label>
-                                    <input id="district" type="text" name="district" value="{{ old('district') }}" placeholder="e.g. Maseru, Roma" required>
+                                    <label for="district">District</label>
+                                    <input id="district" type="text" name="district" value="{{ old('district') }}" placeholder="e.g. Thabatseka" required>
                                 </div>
 
                                 <div class="field" data-lesotho-address-field{{ old('district') === 'Other' ? ' hidden' : '' }}>
