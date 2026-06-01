@@ -598,7 +598,8 @@ class AuthController extends Controller
             [
                 'id' => $user->id,
                 'hash' => sha1($user->getEmailForVerification()),
-            ]
+            ],
+            false
         );
     }
 

@@ -657,7 +657,8 @@ class LoginTest extends TestCase
             [
                 'id' => $verifyingUser->id,
                 'hash' => sha1($verifyingUser->getEmailForVerification()),
-            ]
+            ],
+            false
         );
 
         $response = $this->actingAs($activeUser)->get($verificationUrl);
@@ -700,7 +701,8 @@ class LoginTest extends TestCase
             [
                 'id' => $staleUser->id,
                 'hash' => sha1($verifyingUser->getEmailForVerification()),
-            ]
+            ],
+            false
         );
 
         $response = $this->get($verificationUrl);

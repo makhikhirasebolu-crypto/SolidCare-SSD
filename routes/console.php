@@ -77,7 +77,8 @@ Artisan::command('students:verification-links {--email= : Show only this student
             [
                 'id' => $student->id,
                 'hash' => sha1($student->getEmailForVerification()),
-            ]
+            ],
+            false
         );
 
         $this->line($student->id . ' | ' . $student->name . ' | ' . $student->email);
