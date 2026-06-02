@@ -98,13 +98,19 @@
                 color: transparent;
             }
             .campus-badge {
-                background: rgba(240, 180, 41, 0.18);
-                padding: 5px 12px;
-                border-radius: 60px;
-                font-size: 0.7rem;
-                font-weight: 600;
-                border: 1px solid rgba(240, 180, 41, 0.4);
-                color: #f0b429;
+                display: inline-flex;
+                align-items: center;
+                padding: 0;
+                border-radius: 0;
+                overflow: hidden;
+                background: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+            }
+            .campus-logo {
+                display: block;
+                width: 118px;
+                height: auto;
             }
             .header-actions {
                 display: flex;
@@ -282,23 +288,12 @@
                 line-height: 1.45;
                 color: rgba(255,255,255,0.78);
             }
-            .hero-institution-name {
-                display: inline-flex;
-                align-items: center;
-                gap: 0.8rem;
-                width: 100%;
-                color: #f5e9c9;
-                font-size: 0.9rem;
-                font-weight: 700;
-                justify-content: center;
-            }
-            .hero-institution-name::before,
-            .hero-institution-name::after {
-                content: "";
-                flex: 1 1 2rem;
-                max-width: 4rem;
-                height: 1px;
-                background: rgba(240,180,41,0.55);
+            .hero-institution-logo {
+                display: block;
+                width: min(236px, 100%);
+                height: auto;
+                margin: 0 auto;
+                box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
             }
 
             /* flash messages */
@@ -452,6 +447,13 @@
             }
             .footer-brand i {
                 color: #f0b429;
+            }
+            .footer-institution-logo {
+                display: block;
+                width: 142px;
+                height: auto;
+                margin: 0 0 16px;
+                background: #ffffff;
             }
             .footer-about {
                 color: #90a5c5;
@@ -617,9 +619,8 @@
                 .hero-service-subtitle {
                     font-size: 0.64rem;
                 }
-                .hero-institution-name {
-                    gap: 0.6rem;
-                    font-size: 0.95rem;
+                .hero-institution-logo {
+                    width: min(236px, 100%);
                 }
                 .services-header {
                     gap: 8px;
@@ -690,8 +691,11 @@
                 .hero-service-subtitle {
                     font-size: 0.58rem;
                 }
-                .hero-institution-name {
-                    font-size: 0.84rem;
+                .campus-logo {
+                    width: 104px;
+                }
+                .hero-institution-logo {
+                    width: min(210px, 100%);
                 }
             }
         </style>
@@ -715,7 +719,13 @@
                 <div class="brand-group">
                     <i class="fas fa-shield-virus brand-icon"></i>
                     <div class="brand-name">SolidCare | SSD</div>
-                    <div class="campus-badge"><i class="fas fa-map-marker-alt"></i> Limkokwing Lesotho</div>
+                    <div class="campus-badge">
+                        <img
+                            src="{{ asset('images/limkokwing-logo.svg') }}"
+                            alt="Limkokwing University of Creative Technology Lesotho"
+                            class="campus-logo"
+                        >
+                    </div>
                 </div>
                 <div class="header-actions">
                     <div class="user-welcome">
@@ -752,7 +762,11 @@
                                 <div class="hero-service-title">SolidCare SSD</div>
                                 <div class="hero-service-subtitle">Student wellness, referrals, health, counselling, and accommodation support.</div>
                             </div>
-                            <div class="hero-institution-name">Limkokwing University of Creative Technology, Lesotho</div>
+                            <img
+                                src="{{ asset('images/limkokwing-logo.svg') }}"
+                                alt="Limkokwing University of Creative Technology Lesotho"
+                                class="hero-institution-logo"
+                            >
                         </div>
                     </div>
                 </div>
@@ -851,6 +865,11 @@
                     <div class="footer-brand">
                         <i class="fas fa-hand-holding-heart"></i> <span>SolidCare SSD</span>
                     </div>
+                    <img
+                        src="{{ asset('images/limkokwing-logo.svg') }}"
+                        alt="Limkokwing University of Creative Technology Lesotho"
+                        class="footer-institution-logo"
+                    >
                     <p class="footer-about">Committed to student success and mental wellness at Limkokwing University of Creative Technology, Lesotho.</p>
                     <div class="social-links">
                         <a href="#"><i class="fab fa-facebook-f"></i></a>
