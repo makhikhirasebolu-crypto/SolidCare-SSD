@@ -1832,12 +1832,11 @@ class AuthController extends Controller
 
         $application->update($updatePayload);
 
-        $emailStatus = $this->sendAccommodationStatusEmail($application);
+        $this->sendAccommodationStatusEmail($application);
 
         return redirect()
             ->route('student.accommodation.pending')
-            ->with('success', 'Application status updated to ' . ucfirst($data['status']) . '.')
-            ->with('accommodation_email_status', $emailStatus['message']);
+            ->with('success', 'Application status updated to ' . ucfirst($data['status']) . '.');
     }
 
     public function resendAccommodationStatusEmail(AccommodationApplication $application)
