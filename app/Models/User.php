@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -57,7 +59,6 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'password_temporary' => 'boolean',
             'temporary_password_expires_at' => 'datetime',
-            'temporary_password_plain' => 'encrypted',
             'role' => 'string',
             'student_type' => 'string',
             'student_id' => 'string',
@@ -79,6 +80,26 @@ class User extends Authenticatable implements MustVerifyEmail
 public function referralComments()
 {
     return $this->hasMany(ReferralComment::class);
+}
+
+public function getTemporaryPasswordPlainAttribute(?string $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    try {
+        return Crypt::decryptString($value);
+    } catch (DecryptException) {
+        return null;
+    }
+}
+
+public function setTemporaryPasswordPlainAttribute(?string $value): void
+{
+    $this->attributes['temporary_password_plain'] = $value === null || $value === ''
+        ? null
+        : Crypt::encryptString($value);
 }
 
 }
