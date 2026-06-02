@@ -704,20 +704,11 @@
             margin-bottom: 0.75rem;
         }
 
-        .paper-institution-name {
-            margin: 0 auto 0.85rem;
-            text-align: center;
-            color: #0f2b4d;
-            line-height: 1.35;
-            font-size: 0.92rem;
-            font-weight: 700;
-        }
-
-        .paper-institution-name span {
+        .paper-institution-logo {
             display: block;
-            font-size: inherit;
-            font-weight: inherit;
-            margin-top: 0;
+            width: min(236px, 100%);
+            height: auto;
+            margin: 0 auto 0.85rem;
         }
 
         .paper-title {
@@ -1816,7 +1807,11 @@
 
                                         <div class="paper-feedback-form">
                                             <div class="paper-code">LUCT Lesotho SSD/FF 1</div>
-                                            <div class="paper-institution-name">Limkokwing University of Creative Technology, Lesotho</div>
+                                            <img
+                                                src="{{ asset('images/limkokwing-logo.svg') }}"
+                                                alt="Limkokwing University of Creative Technology Lesotho"
+                                                class="paper-institution-logo"
+                                            >
                                             <div class="paper-title">
                                                 <strong>Limkokwing University of Creative Technology, Lesotho</strong>
                                                 <strong>LUCT Student's Referral Feedback Form from the Student Services Department</strong>

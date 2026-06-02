@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 236 125" role="img" aria-labelledby="title desc">
+    <title id="title">Limkokwing University of Creative Technology Lesotho</title>
+    <desc id="desc">Black and white Limkokwing University of Creative Technology Lesotho logo.</desc>
+    <rect x="0" y="0" width="236" height="125" fill="#ffffff"/>
+    <rect x="33" y="18" width="203" height="83" fill="#161519"/>
+    <g fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" text-anchor="middle">
+        <text x="134.5" y="52" font-size="31" letter-spacing="-2">LIMKOKWING</text>
+        <text x="134.5" y="83" font-size="31" letter-spacing="-2">UNIVERSITY</text>
+        <line x1="50" y1="91" x2="219" y2="91" stroke="#ffffff" stroke-width="1"/>
+        <text x="134.5" y="107" font-size="15" letter-spacing="-0.5">OF CREATIVE TECHNOLOGY</text>
+    </g>
+    <g fill="#161519" stroke="#161519" font-family="Georgia, 'Times New Roman', serif">
+        <line x1="34" y1="115" x2="94" y2="115" stroke-width="1"/>
+        <text x="101" y="121" font-size="24" stroke="none">LESOTHO</text>
+        <line x1="202" y1="115" x2="235" y2="115" stroke-width="1"/>
+    </g>
+</svg>
