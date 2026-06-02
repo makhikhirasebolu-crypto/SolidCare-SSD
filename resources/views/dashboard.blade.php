@@ -265,32 +265,11 @@
                 display: inline-flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 0.9rem;
                 width: min(100%, 360px);
-            }
-            .hero-service-panel {
-                width: 100%;
-                background: rgba(255,255,255,0.08);
-                color: #f8f7f2;
-                padding: 1.25rem;
-                border: 1px solid rgba(255,255,255,0.16);
-                box-shadow: 0 14px 28px rgba(0,0,0,0.32);
-                text-align: center;
-            }
-            .hero-service-title {
-                font-size: clamp(1.65rem, 3vw, 2.35rem);
-                line-height: 1;
-                font-weight: 800;
-            }
-            .hero-service-subtitle {
-                margin-top: 0.65rem;
-                font-size: 0.92rem;
-                line-height: 1.45;
-                color: rgba(255,255,255,0.78);
             }
             .hero-institution-logo {
                 display: block;
-                width: min(236px, 100%);
+                width: min(320px, 100%);
                 height: auto;
                 margin: 0 auto;
                 box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
@@ -610,17 +589,8 @@
                 .hero-service-lockup {
                     width: min(100%, 280px);
                 }
-                .hero-service-panel {
-                    padding: 0.75rem 0.85rem 0.68rem;
-                }
-                .hero-service-title {
-                    font-size: clamp(1.35rem, 6.5vw, 1.7rem);
-                }
-                .hero-service-subtitle {
-                    font-size: 0.64rem;
-                }
                 .hero-institution-logo {
-                    width: min(236px, 100%);
+                    width: min(280px, 100%);
                 }
                 .services-header {
                     gap: 8px;
@@ -685,17 +655,11 @@
                 .hero-service-lockup {
                     width: min(100%, 248px);
                 }
-                .hero-service-title {
-                    font-size: 1.25rem;
-                }
-                .hero-service-subtitle {
-                    font-size: 0.58rem;
-                }
                 .campus-logo {
                     width: 104px;
                 }
                 .hero-institution-logo {
-                    width: min(210px, 100%);
+                    width: min(248px, 100%);
                 }
             }
         </style>
@@ -757,11 +721,7 @@
                 </div>
                 <div class="hero-illustration">
                     <div class="glass-card-illus">
-                        <div class="hero-service-lockup" aria-label="SolidCare Student Support Directorate">
-                            <div class="hero-service-panel">
-                                <div class="hero-service-title">SolidCare SSD</div>
-                                <div class="hero-service-subtitle">Student wellness, referrals, health, counselling, and accommodation support.</div>
-                            </div>
+                        <div class="hero-service-lockup" aria-label="Limkokwing University of Creative Technology Lesotho">
                             <img
                                 src="{{ asset('images/limkokwing-logo.svg') }}"
                                 alt="Limkokwing University of Creative Technology Lesotho"
