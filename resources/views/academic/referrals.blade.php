@@ -708,15 +708,16 @@
             margin: 0 auto 0.85rem;
             text-align: center;
             color: #0f2b4d;
-            line-height: 1.25;
-            font-weight: 800;
+            line-height: 1.35;
+            font-size: 0.92rem;
+            font-weight: 700;
         }
 
         .paper-institution-name span {
             display: block;
-            font-size: 0.75rem;
-            font-weight: 600;
-            margin-top: 0.15rem;
+            font-size: inherit;
+            font-weight: inherit;
+            margin-top: 0;
         }
 
         .paper-title {
@@ -726,15 +727,11 @@
         }
 
         .paper-title strong {
-            display: inline-block;
-            background: #eef6ff;
-            color: #1e4a76;
-            border: 1px solid #d7e8fb;
-            border-radius: 999px;
-            padding: 0.32rem 0.75rem;
+            display: block;
+            color: #0f2b4d;
             font-size: 0.72rem;
             text-transform: uppercase;
-            margin-top: 0.2rem;
+            margin-top: 0.25rem;
             max-width: 100%;
         }
 
@@ -1819,11 +1816,7 @@
 
                                         <div class="paper-feedback-form">
                                             <div class="paper-code">LUCT Lesotho SSD/FF 1</div>
-                                            <div class="paper-institution-name">
-                                                Limkokwing University
-                                                <span>of Creative Technology</span>
-                                                <span>Lesotho</span>
-                                            </div>
+                                            <div class="paper-institution-name">Limkokwing University of Creative Technology, Lesotho</div>
                                             <div class="paper-title">
                                                 <strong>Limkokwing University of Creative Technology, Lesotho</strong>
                                                 <strong>LUCT Student's Referral Feedback Form from the Student Services Department</strong>
